@@ -173,8 +173,8 @@
 </head>
 <body>
 
-<div class="setup-banner">
-  セットアップ未完了：<code>CLIENT_ID</code> と <code>GAS_API_URL</code> をこのファイル内のJavaScriptで設定してください（コード上部のコメント参照）。設定後はこのバナーは表示されません。
+<div id="setupBanner" class="setup-banner hidden">
+  セットアップ未完了：<code>CLIENT_ID</code> と <code>GAS_API_URL</code> をこのファイル内のJavaScriptで設定してください（コード上部のコメント参照）。
 </div>
 
 <!-- ログイン画面 -->
@@ -269,8 +269,8 @@
   'use strict';
 
   // ▼▼▼ ここを実際の値に置き換えてください ▼▼▼
-  var CLIENT_ID = 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com';
-  var GAS_API_URL = 'YOUR_GAS_WEBAPP_EXEC_URL';
+  var CLIENT_ID = '199375582652-12dgtvao2mo6070n5gup3mrqrpeq9lif.apps.googleusercontent.com';
+  var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxOkLQhgds7ULE2GU3lf_oAUcQXz-ZdGeNp8E7SekFzDpN6DiReXhIczR43H-B95a-0nA/exec';
   // ▲▲▲ ここまで ▲▲▲
 
   var currentUser = null;
@@ -400,7 +400,7 @@
 
   window.addEventListener('DOMContentLoaded', function () {
     if (CLIENT_ID.indexOf('YOUR_') === 0 || GAS_API_URL.indexOf('YOUR_') === 0) {
-      // バナーは表示済み。ボタン初期化のみ行い、実際の通信は失敗する旨を伝える。
+      $('setupBanner').classList.remove('hidden');
     }
 
     window.handleCredentialResponse = handleCredentialResponse;
