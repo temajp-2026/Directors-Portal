@@ -252,6 +252,22 @@
   var currentIdToken = null;
   var invoices = [];
 
+  // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、
+  // 同じタブ内で移動してきた場合は再ログインを求めないようにする。
+  var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  function saveAuthToStorage() {
+    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+  }
+  function clearAuthStorage() {
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
+  }
+  function loadAuthFromStorage() {
+    try {
+      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
   function $(id) { return document.getElementById(id); }
 
   function showToast(msg) {
@@ -305,6 +321,7 @@
       }
       currentUser = res.user;
       invoices = res.data || [];
+      saveAuthToStorage();
       $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
       $('loginShell').classList.add('hidden');
       $('appShell').classList.remove('hidden');
@@ -320,11 +337,27 @@
     currentUser = null;
     currentIdToken = null;
     invoices = [];
+    clearAuthStorage();
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
     }
     $('appShell').classList.add('hidden');
     $('loginShell').classList.remove('hidden');
+  }
+
+  function tryAutoLogin() {
+    var cached = loadAuthFromStorage();
+    if (!cached || !cached.idToken) return;
+    currentIdToken = cached.idToken;
+    currentUser = cached.user;
+    callApi('listInvoices').then(function (res) {
+      if (!res.ok) { clearAuthStorage(); currentIdToken = null; currentUser = null; return; }
+      invoices = res.data || [];
+      $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+      $('loginShell').classList.add('hidden');
+      $('appShell').classList.remove('hidden');
+      renderList();
+    }).catch(function () { clearAuthStorage(); currentIdToken = null; currentUser = null; });
   }
 
   /* ---------- 一覧 ---------- */
@@ -496,6 +529,8 @@
   }
 
   window.addEventListener('DOMContentLoaded', function () {
+    tryAutoLogin();
+
     window.handleCredentialResponse = handleCredentialResponse;
 
     var initTimer = setInterval(function () {

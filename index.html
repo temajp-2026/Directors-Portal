@@ -278,6 +278,22 @@
   var courses = [];
   var editingCourseId = null;
 
+  // 同じタブ内で他の理事ポータルのツール(請求書管理簿など)に移動しても
+  // 再ログインを求めないよう、ログイン情報をタブ内に一時保存する。
+  var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  function saveAuthToStorage() {
+    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+  }
+  function clearAuthStorage() {
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
+  }
+  function loadAuthFromStorage() {
+    try {
+      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
   function $(id) { return document.getElementById(id); }
 
   function showToast(msg) {
@@ -313,6 +329,7 @@
       }
       currentUser = res.user;
       courses = res.data || [];
+      saveAuthToStorage();
       $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
       $('loginShell').classList.add('hidden');
       $('appShell').classList.remove('hidden');
@@ -328,11 +345,27 @@
     currentUser = null;
     currentIdToken = null;
     courses = [];
+    clearAuthStorage();
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
     }
     $('appShell').classList.add('hidden');
     $('loginShell').classList.remove('hidden');
+  }
+
+  function tryAutoLogin() {
+    var cached = loadAuthFromStorage();
+    if (!cached || !cached.idToken) return;
+    currentIdToken = cached.idToken;
+    currentUser = cached.user;
+    callApi('listCourses').then(function (res) {
+      if (!res.ok) { clearAuthStorage(); currentIdToken = null; currentUser = null; return; }
+      courses = res.data || [];
+      $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+      $('loginShell').classList.add('hidden');
+      $('appShell').classList.remove('hidden');
+      renderCourses();
+    }).catch(function () { clearAuthStorage(); currentIdToken = null; currentUser = null; });
   }
 
   function renderCourses() {
@@ -408,6 +441,8 @@
     if (CLIENT_ID.indexOf('YOUR_') === 0 || GAS_API_URL.indexOf('YOUR_') === 0) {
       $('setupBanner').classList.remove('hidden');
     }
+
+    tryAutoLogin();
 
     window.handleCredentialResponse = handleCredentialResponse;
 
