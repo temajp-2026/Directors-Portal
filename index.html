@@ -199,10 +199,10 @@
 
   <div class="app-body">
     <div class="menu-grid">
-      <a class="menu-item" href="講師依頼_請書兼請求書.html" target="_blank" rel="noopener">
+      <a class="menu-item" href="請求書管理簿.html">
         <div class="menu-item-title">請書兼請求書発行</div>
-        <div class="menu-item-desc">講師への請書兼請求書を作成・印刷します。</div>
-        <span class="menu-item-tag">単体版・講座連携は今後対応</span>
+        <div class="menu-item-desc">講師への請書兼請求書を作成し、講師用リンクを発行・管理します。</div>
+        <span class="menu-item-tag">講座連携は今後対応</span>
       </a>
       <div class="menu-item disabled">
         <div class="menu-item-title">講座準備進捗確認</div>
@@ -388,6 +388,9 @@
     };
     if (!payload.name) { showToast('講座名を入力してください'); return; }
     var action = editingCourseId ? 'updateCourse' : 'createCourse';
+    var saveBtn = $('btnCourseSave');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
     callApi(action, payload).then(function (res) {
       if (!res.ok) { showToast('保存に失敗しました：' + res.error); return; }
       closeCourseModal();
@@ -395,6 +398,9 @@
       return callApi('listCourses');
     }).then(function (res) {
       if (res && res.ok) { courses = res.data; renderCourses(); }
+    }).finally(function () {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存';
     });
   }
 

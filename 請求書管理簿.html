@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>請求書管理簿｜理事ポータル</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=BIZ+UDPGothic:wght@400;700&display=swap">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #eef1f6; }
+  body { font-family: 'BIZ UDPGothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif; color: #1c2b3a; }
+
+  .login-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-card {
+    background: #ffffff; border-radius: 8px; box-shadow: 0 6px 24px rgba(21,39,68,0.14);
+    padding: 40px 36px; text-align: center; max-width: 380px; width: 100%;
+  }
+  .login-title { font-family: 'Shippori Mincho', serif; font-size: 20px; font-weight: 700; color: #152744; margin: 0 0 6px; }
+  .login-sub { font-size: 12.5px; color: #5b6779; margin: 0 0 24px; line-height: 1.7; }
+  .login-error {
+    margin-top: 18px; font-size: 12.5px; color: #a02b2b; background: #fdecec;
+    border: 1px solid #f0b8b8; border-radius: 4px; padding: 10px 12px; display: none;
+  }
+
+  .app-header {
+    background: #152744; color: #ffffff; padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .header-left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .app-title { font-family: 'Shippori Mincho', serif; font-size: 17px; font-weight: 700; letter-spacing: 0.02em; }
+  .back-link { color: #c7d3e8; font-size: 12px; text-decoration: none; }
+  .back-link:hover { color: #ffffff; }
+  .user-chip { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #dbe2ee; }
+  .user-chip button {
+    background: transparent; border: 1px solid rgba(255,255,255,0.4); color: #ffffff;
+    border-radius: 4px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+  }
+  .user-chip button:hover { background: rgba(255,255,255,0.12); }
+
+  .app-body { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+  .hidden { display: none !important; }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .section-title { font-family: 'Shippori Mincho', serif; font-size: 16px; font-weight: 700; color: #152744; }
+
+  .btn {
+    font-family: 'BIZ UDPGothic', system-ui, sans-serif; font-size: 12.5px; font-weight: 700;
+    padding: 8px 14px; border-radius: 4px; border: 1px solid transparent; cursor: pointer;
+  }
+  .btn-primary { background: #152744; color: #ffffff; }
+  .btn-primary:hover { background: #1e3a63; }
+  .btn-outline { background: #ffffff; color: #152744; border-color: #152744; }
+  .btn-outline:hover { background: #f0f3f8; }
+  .btn-cancel { background: #ffffff; color: #445267; border-color: #c7cede; }
+  .btn:disabled { opacity: 0.6; cursor: default; }
+
+  table.list-table { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 13px; }
+  table.list-table th, table.list-table td { border: 1px solid #d7dee9; padding: 10px 12px; text-align: left; vertical-align: middle; }
+  table.list-table th { background: #f3f5fa; color: #152744; font-weight: 700; font-size: 12px; }
+  table.list-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .status-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+  .status-作成済み { background: #e7edfb; color: #1e3a63; }
+  .status-確定済み { background: #e3f3e9; color: #226b3f; }
+
+  .empty-state { text-align: center; color: #6b7890; font-size: 13px; padding: 40px 0; background: #ffffff; border: 1px solid #d7dee9; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+    display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 50;
+  }
+  .modal-panel { background: #ffffff; width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; border-radius: 6px; padding: 26px 30px 30px; }
+  .modal-title { font-family: 'Shippori Mincho', serif; font-size: 17px; font-weight: 700; color: #152744; margin-bottom: 4px; }
+  .modal-sub { font-size: 12px; color: #5b6779; margin-bottom: 16px; }
+  .modal-section-title { font-size: 13px; font-weight: 700; color: #152744; margin: 20px 0 10px; padding-bottom: 5px; border-bottom: 2px solid #152744; }
+
+  .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 18px; }
+  .field-grid.single { grid-template-columns: 1fr; }
+  .full-span { grid-column: 1 / -1; }
+  .field label { font-size: 12px; font-weight: 700; color: #3c4a5f; display: block; margin-bottom: 4px; }
+
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+    width: 100%; font-family: 'BIZ UDPGothic', system-ui, sans-serif; font-size: 13px;
+    padding: 7px 9px; border: 1px solid #c7cede; border-radius: 3px; background: #ffffff; color: #1c2b3a;
+  }
+  input:focus, select:focus { outline: 2px solid #1e3a63; outline-offset: 1px; }
+
+  .radio-group { display: flex; gap: 16px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+  .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; }
+
+  .checkbox-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px 14px; }
+  .checkbox-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
+  .checkbox-item input { width: auto; }
+
+  .calc-box { background: #f3f5fa; border: 1px solid #d7dee9; border-radius: 4px; padding: 12px 14px; margin-top: 14px; font-size: 12.5px; }
+  .calc-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .calc-row.total { border-top: 1px solid #c7cede; margin-top: 6px; padding-top: 7px; font-weight: 700; color: #152744; font-size: 13.5px; }
+
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
+  .link-result { background: #eef7f0; border: 1px solid #bfe3cb; border-radius: 5px; padding: 14px 16px; margin-top: 16px; font-size: 12.5px; color: #226b3f; }
+  .link-result .link-row { display: flex; gap: 8px; margin-top: 8px; }
+  .link-result input { flex: 1; font-size: 12px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #152744; color: #ffffff; font-size: 13px; padding: 10px 20px; border-radius: 4px; z-index: 60;
+  }
+
+  @media (max-width: 720px) {
+    .field-grid { grid-template-columns: 1fr; }
+    table.list-table { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loginShell" class="login-shell">
+  <div class="login-card">
+    <div class="login-title">請求書管理簿</div>
+    <p class="login-sub">特定非営利活動法人　日本繊維商品めんてなんす研究会<br>Googleアカウントでログインしてください。<br>あらかじめ登録された理事のみ利用できます。</p>
+    <div id="gsiButton" style="display:flex; justify-content:center;"></div>
+    <div id="loginError" class="login-error"></div>
+  </div>
+</div>
+
+<div id="appShell" class="hidden">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="app-title">請求書管理簿</div>
+      <a class="back-link" href="理事ポータル_index.html">← 理事ポータルへ戻る</a>
+    </div>
+    <div class="user-chip">
+      <span id="userLabel"></span>
+      <button type="button" id="btnLogout">ログアウト</button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <div class="section-header">
+      <div class="section-title">作成済みの請書兼請求書</div>
+      <button type="button" class="btn btn-primary" id="btnAddInvoice">＋ 新規作成</button>
+    </div>
+
+    <table class="list-table" id="invoiceTable">
+      <thead>
+        <tr>
+          <th>講演テーマ</th>
+          <th>担当理事</th>
+          <th>開催日</th>
+          <th>謝礼(税抜)</th>
+          <th>ステータス</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="invoiceTbody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state hidden">まだ請求書が作成されていません。「＋ 新規作成」から作成してください。</div>
+  </div>
+</div>
+
+<!-- 新規作成モーダル -->
+<div id="invoiceModal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <div class="modal-title">請書兼請求書を新規作成</div>
+    <div class="modal-sub">必要事項を入力して保存すると、講師の方に送る専用リンクが発行されます。</div>
+
+    <div class="modal-section-title">① 研修・講演概要</div>
+    <div class="field-grid">
+      <div class="field"><label for="f-eventDate">開催日</label><input type="date" id="f-eventDate"></div>
+      <div class="field"><label for="f-directorName">担当理事名</label><input type="text" id="f-directorName" placeholder="例）山田太郎"></div>
+      <div class="field"><label for="f-startTime">開始時刻</label><input type="time" id="f-startTime"></div>
+      <div class="field"><label for="f-endTime">終了時刻</label><input type="time" id="f-endTime"></div>
+      <div class="field full-span"><label for="f-venue">開催場所</label><input type="text" id="f-venue" placeholder="例）本部研修室"></div>
+      <div class="field full-span"><label for="f-topic">講演テーマ</label><input type="text" id="f-topic" placeholder="例）繊維製品の適切な取り扱いについて"></div>
+      <div class="field">
+        <label for="f-format">研修形式</label>
+        <select id="f-format">
+          <option value="座学">座学</option>
+          <option value="見学">見学</option>
+          <option value="実技">実技</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-section-title">② 謝礼金・条件</div>
+    <div class="field-grid">
+      <div class="field"><label for="f-fee">謝礼本体金額（税抜・円）</label><input type="number" min="0" step="1" id="f-fee" value="0"></div>
+      <div class="field">
+        <label>交通費・宿泊費の扱い</label>
+        <div class="radio-group">
+          <label><input type="radio" name="travelHandling" value="含む"> 含む</label>
+          <label><input type="radio" name="travelHandling" value="別途支給" checked> 別途支給</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-paymentMethod">支払方法</label>
+        <select id="f-paymentMethod">
+          <option value="銀行振込">銀行振込</option>
+          <option value="現金">現金</option>
+        </select>
+      </div>
+      <div class="field"><label for="f-paymentDueDate">支払予定日</label><input type="date" id="f-paymentDueDate"></div>
+    </div>
+
+    <div class="calc-box">
+      <div class="calc-row"><span>消費税額（10%）</span><span id="calc-tax">¥0</span></div>
+      <div class="calc-row"><span>小計（税込）</span><span id="calc-subtotal">¥0</span></div>
+      <div class="calc-row"><span>源泉徴収税額（個人・10.21%と仮定）</span><span id="calc-withholding">¥0</span></div>
+      <div class="calc-row total"><span>差引お支払総額（振込額）</span><span id="calc-total">¥0</span></div>
+    </div>
+
+    <div class="modal-section-title">③ 準備機材等（主催者側で用意）</div>
+    <div class="checkbox-grid">
+      <label class="checkbox-item"><input type="checkbox" id="eq-projector"> プロジェクター</label>
+      <label class="checkbox-item"><input type="checkbox" id="eq-pc"> PC</label>
+      <label class="checkbox-item"><input type="checkbox" id="eq-mic"> マイク</label>
+      <label class="checkbox-item"><input type="checkbox" id="eq-whiteboard"> ホワイトボード</label>
+      <label class="checkbox-item"><input type="checkbox" id="eq-greenroom"> 控室</label>
+      <label class="checkbox-item"><input type="checkbox" id="eq-screen"> スクリーン</label>
+    </div>
+
+    <div id="linkResult" class="link-result hidden">
+      作成しました。以下のリンクを講師の方に送付してください（Googleログインは不要です）。
+      <div class="link-row">
+        <input type="text" id="generatedLink" readonly>
+        <button type="button" class="btn btn-outline" id="btnCopyGeneratedLink">コピー</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnInvoiceCancel">閉じる</button>
+      <button type="button" class="btn btn-primary" id="btnInvoiceSave">保存してリンクを発行</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var CLIENT_ID = '199375582652-12dgtvao2mo6070n5gup3mrqrpeq9lif.apps.googleusercontent.com';
+  var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxOkLQhgds7ULE2GU3lf_oAUcQXz-ZdGeNp8E7SekFzDpN6DiReXhIczR43H-B95a-0nA/exec';
+  var LECTURER_PAGE = '請求書_講師用.html';
+
+  var currentUser = null;
+  var currentIdToken = null;
+  var invoices = [];
+
+  function $(id) { return document.getElementById(id); }
+
+  function showToast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function () { t.classList.add('hidden'); }, 2400);
+  }
+
+  function callApi(action, payload) {
+    return fetch(GAS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, idToken: currentIdToken, payload: payload || {} })
+    }).then(function (r) { return r.json(); });
+  }
+
+  function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP'); }
+
+  function calcAmounts(fee, withholdingType) {
+    fee = Math.max(0, Math.round(Number(fee) || 0));
+    var tax = Math.floor(fee * 0.10);
+    var subtotal = fee + tax;
+    var withholding = withholdingType === '法人' ? 0 : Math.floor(fee * 0.1021);
+    return { fee: fee, tax: tax, subtotal: subtotal, withholding: withholding, total: subtotal - withholding };
+  }
+
+  function updateModalCalc() {
+    var c = calcAmounts($('f-fee').value, '個人');
+    $('calc-tax').textContent = yen(c.tax);
+    $('calc-subtotal').textContent = yen(c.subtotal);
+    $('calc-withholding').textContent = yen(c.withholding);
+    $('calc-total').textContent = yen(c.total);
+  }
+
+  /* ---------- ログイン ---------- */
+  function handleCredentialResponse(response) {
+    currentIdToken = response.credential;
+    $('loginError').style.display = 'none';
+    callApi('listInvoices').then(function (res) {
+      if (!res.ok) {
+        var msg = res.error === 'not_allowed'
+          ? 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。'
+          : 'ログインに失敗しました。時間をおいて再度お試しください。';
+        var el = $('loginError');
+        el.textContent = msg;
+        el.style.display = 'block';
+        currentIdToken = null;
+        return;
+      }
+      currentUser = res.user;
+      invoices = res.data || [];
+      $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+      $('loginShell').classList.add('hidden');
+      $('appShell').classList.remove('hidden');
+      renderList();
+    }).catch(function () {
+      var el = $('loginError');
+      el.textContent = 'サーバーに接続できませんでした。GAS_API_URLの設定をご確認ください。';
+      el.style.display = 'block';
+    });
+  }
+
+  function logout() {
+    currentUser = null;
+    currentIdToken = null;
+    invoices = [];
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.disableAutoSelect();
+    }
+    $('appShell').classList.add('hidden');
+    $('loginShell').classList.remove('hidden');
+  }
+
+  /* ---------- 一覧 ---------- */
+  function lecturerLinkFor(id) {
+    return new URL(LECTURER_PAGE + '?id=' + encodeURIComponent(id), window.location.href).toString();
+  }
+
+  function copyText(text, okMsg) {
+    function done() { showToast(okMsg || 'コピーしました'); }
+    function fail() { showToast('コピーできませんでした。手動でコピーしてください。'); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(text, done, fail); });
+      } else {
+        legacyCopy(text, done, fail);
+      }
+    } catch (e) { legacyCopy(text, done, fail); }
+  }
+
+  function legacyCopy(text, done, fail) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? done() : fail();
+    } catch (e) { fail(); }
+  }
+
+  function renderList() {
+    var tbody = $('invoiceTbody');
+    tbody.innerHTML = '';
+    if (!invoices.length) {
+      $('emptyState').classList.remove('hidden');
+      $('invoiceTable').classList.add('hidden');
+      return;
+    }
+    $('emptyState').classList.add('hidden');
+    $('invoiceTable').classList.remove('hidden');
+
+    invoices.forEach(function (inv) {
+      var tr = document.createElement('tr');
+
+      var tdTopic = document.createElement('td');
+      tdTopic.textContent = inv.topic || '(講演テーマ未設定)';
+      tr.appendChild(tdTopic);
+
+      var tdDirector = document.createElement('td');
+      tdDirector.textContent = inv.directorName || '未定';
+      tr.appendChild(tdDirector);
+
+      var tdDate = document.createElement('td');
+      tdDate.textContent = inv.eventDate || '未定';
+      tr.appendChild(tdDate);
+
+      var tdFee = document.createElement('td');
+      tdFee.className = 'amount';
+      tdFee.textContent = yen(inv.feeExTax);
+      tr.appendChild(tdFee);
+
+      var tdStatus = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = 'status-badge status-' + (inv.status || '作成済み');
+      badge.textContent = inv.status || '作成済み';
+      tdStatus.appendChild(badge);
+      tr.appendChild(tdStatus);
+
+      var tdActions = document.createElement('td');
+      var actionsWrap = document.createElement('div');
+      actionsWrap.className = 'row-actions';
+
+      var btnView = document.createElement('button');
+      btnView.type = 'button';
+      btnView.className = 'btn btn-outline';
+      btnView.textContent = '確認・印刷';
+      btnView.addEventListener('click', function () {
+        window.open(LECTURER_PAGE + '?id=' + encodeURIComponent(inv.id), '_blank');
+      });
+      actionsWrap.appendChild(btnView);
+
+      var btnCopy = document.createElement('button');
+      btnCopy.type = 'button';
+      btnCopy.className = 'btn btn-outline';
+      btnCopy.textContent = '講師用リンクをコピー';
+      btnCopy.addEventListener('click', function () {
+        copyText(lecturerLinkFor(inv.id), '講師用リンクをコピーしました');
+      });
+      actionsWrap.appendChild(btnCopy);
+
+      tdActions.appendChild(actionsWrap);
+      tr.appendChild(tdActions);
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ---------- 新規作成モーダル ---------- */
+  function openModal() {
+    $('f-eventDate').value = '';
+    $('f-startTime').value = '';
+    $('f-endTime').value = '';
+    $('f-venue').value = '';
+    $('f-topic').value = '';
+    $('f-format').value = '座学';
+    $('f-directorName').value = '';
+    $('f-fee').value = 0;
+    document.querySelector('input[name="travelHandling"][value="別途支給"]').checked = true;
+    $('f-paymentMethod').value = '銀行振込';
+    $('f-paymentDueDate').value = '';
+    ['projector', 'pc', 'mic', 'whiteboard', 'greenroom', 'screen'].forEach(function (k) { $('eq-' + k).checked = false; });
+    updateModalCalc();
+    $('linkResult').classList.add('hidden');
+    $('btnInvoiceSave').disabled = false;
+    $('btnInvoiceSave').textContent = '保存してリンクを発行';
+    $('invoiceModal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    $('invoiceModal').classList.add('hidden');
+  }
+
+  function radioValue(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : '';
+  }
+
+  function saveInvoice() {
+    var payload = {
+      eventDate: $('f-eventDate').value,
+      startTime: $('f-startTime').value,
+      endTime: $('f-endTime').value,
+      venue: $('f-venue').value,
+      topic: $('f-topic').value,
+      format: $('f-format').value,
+      directorName: $('f-directorName').value,
+      feeExTax: Number($('f-fee').value) || 0,
+      travelHandling: radioValue('travelHandling') || '別途支給',
+      paymentMethod: $('f-paymentMethod').value,
+      paymentDueDate: $('f-paymentDueDate').value,
+      equipment: {
+        projector: $('eq-projector').checked,
+        pc: $('eq-pc').checked,
+        mic: $('eq-mic').checked,
+        whiteboard: $('eq-whiteboard').checked,
+        greenroom: $('eq-greenroom').checked,
+        screen: $('eq-screen').checked
+      }
+    };
+    if (!payload.topic) { showToast('講演テーマを入力してください'); return; }
+
+    var saveBtn = $('btnInvoiceSave');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
+
+    callApi('createInvoice', payload).then(function (res) {
+      if (!res.ok) { showToast('保存に失敗しました：' + res.error); return; }
+      var link = lecturerLinkFor(res.data.id);
+      $('generatedLink').value = link;
+      $('linkResult').classList.remove('hidden');
+      showToast('作成しました');
+      return callApi('listInvoices');
+    }).then(function (res) {
+      if (res && res.ok) { invoices = res.data; renderList(); }
+    }).finally(function () {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存してリンクを発行';
+    });
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    window.handleCredentialResponse = handleCredentialResponse;
+
+    var initTimer = setInterval(function () {
+      if (window.google && google.accounts && google.accounts.id) {
+        clearInterval(initTimer);
+        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
+        google.accounts.id.renderButton($('gsiButton'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja' });
+      }
+    }, 200);
+
+    $('btnLogout').addEventListener('click', logout);
+    $('btnAddInvoice').addEventListener('click', openModal);
+    $('btnInvoiceCancel').addEventListener('click', closeModal);
+    $('btnInvoiceSave').addEventListener('click', saveInvoice);
+    $('f-fee').addEventListener('input', updateModalCalc);
+    $('btnCopyGeneratedLink').addEventListener('click', function () {
+      copyText($('generatedLink').value, 'リンクをコピーしました');
+    });
+    $('invoiceModal').addEventListener('click', function (e) {
+      if (e.target.id === 'invoiceModal') closeModal();
+    });
+  });
+})();
+</script>
+</body>
+</html>
