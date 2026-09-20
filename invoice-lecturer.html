@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>請書兼請求書｜日本繊維商品めんてなんす研究会</title>
+<script>(function () {
+  try {
+    var v = localStorage.getItem('temaFontSizePref');
+    if (v === 'large' || v === 'xlarge') document.documentElement.classList.add('fs-' + v);
+  } catch (e) {}
+})();</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
 <style>
   :root {
@@ -15,9 +21,23 @@
     --gw-red: #c5221f; --gw-red-tint: #fce8e6;
     --gw-shadow-1: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
     --gw-shadow-2: 0 1px 3px 0 rgba(60,64,67,.30), 0 4px 8px 3px rgba(60,64,67,.15);
+    --fs-scale: 1;
   }
+  html.fs-large { --fs-scale: 1.12; }
+  html.fs-xlarge { --fs-scale: 1.24; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--gw-bg); }
+
+  .fontsize-toggle { display: flex; align-items: center; gap: 4px; }
+  .fontsize-toggle-label { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-right: 2px; white-space: nowrap; }
+  .fs-btn {
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 11.5px); font-weight: 500;
+    padding: 5px 10px; border-radius: 14px; border: 1px solid var(--gw-border); background: var(--gw-surface);
+    color: var(--gw-text-secondary); cursor: pointer;
+  }
+  .fs-btn:hover { background: var(--gw-bg); }
+  .fs-btn.active { background: var(--gw-blue); color: #ffffff; border-color: var(--gw-blue); }
+  .fs-btn.active:hover { background: var(--gw-blue-dark); }
 
   .page-shell {
     width: 100%; min-height: 100vh; background: var(--gw-bg);
@@ -30,7 +50,7 @@
     justify-content: flex-end; align-items: center; margin-bottom: 20px;
   }
   .btn {
-    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: 13.5px; font-weight: 500;
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13.5px); font-weight: 500;
     padding: 10px 20px; border-radius: 20px; border: 1px solid transparent; cursor: pointer;
   }
   .btn-primary { background: var(--gw-blue); color: #ffffff; }
@@ -40,7 +60,7 @@
   .btn:disabled { opacity: 0.6; cursor: default; }
 
   .toast {
-    width: 100%; max-width: 820px; background: #323232; color: #ffffff; font-size: 13px;
+    width: 100%; max-width: 820px; background: #323232; color: #ffffff; font-size: calc(var(--fs-scale, 1) * 13px);
     padding: 10px 18px; border-radius: 8px; margin-bottom: 16px; box-shadow: var(--gw-shadow-2);
   }
   .hidden { display: none !important; }
@@ -51,66 +71,66 @@
   }
 
   .doc-title {
-    font-size: 24px; font-weight: 700; letter-spacing: 0.04em;
+    font-size: calc(var(--fs-scale, 1) * 24px); font-weight: 700; letter-spacing: 0.04em;
     text-align: center; color: var(--gw-text); margin: 0 0 10px; padding-bottom: 16px; border-bottom: 2px solid var(--gw-blue);
   }
-  .doc-meta { display: flex; justify-content: flex-end; font-size: 12px; color: var(--gw-text-secondary); margin: 14px 0 26px; }
-  .recipient { font-size: 18px; font-weight: 500; color: var(--gw-text); border-bottom: 1px solid var(--gw-border); padding-bottom: 10px; margin-bottom: 22px; }
-  .lead-text { font-size: 13px; line-height: 1.9; color: var(--gw-text); margin: 0 0 6px; }
+  .doc-meta { display: flex; justify-content: flex-end; font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin: 14px 0 26px; }
+  .recipient { font-size: calc(var(--fs-scale, 1) * 18px); font-weight: 500; color: var(--gw-text); border-bottom: 1px solid var(--gw-border); padding-bottom: 10px; margin-bottom: 22px; }
+  .lead-text { font-size: calc(var(--fs-scale, 1) * 13px); line-height: 1.9; color: var(--gw-text); margin: 0 0 6px; }
 
   .section-title {
-    font-size: 14.5px; font-weight: 500; color: var(--gw-blue-dark);
+    font-size: calc(var(--fs-scale, 1) * 14.5px); font-weight: 500; color: var(--gw-blue-dark);
     background: var(--gw-blue-tint); padding: 8px 14px; margin: 26px 0 0; letter-spacing: 0.02em; border-radius: 8px 8px 0 0;
   }
 
-  table.doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.doc-table { width: 100%; border-collapse: collapse; font-size: calc(var(--fs-scale, 1) * 13px); }
   table.doc-table th, table.doc-table td { border: 1px solid var(--gw-border); padding: 9px 13px; text-align: left; vertical-align: top; }
   table.doc-table th { width: 38%; background: var(--gw-bg); color: var(--gw-text); font-weight: 500; }
-  table.doc-table tr.total-row th, table.doc-table tr.total-row td { background: var(--gw-blue-tint); color: var(--gw-blue-dark); font-weight: 700; font-size: 13px; white-space: nowrap; }
+  table.doc-table tr.total-row th, table.doc-table tr.total-row td { background: var(--gw-blue-tint); color: var(--gw-blue-dark); font-weight: 700; font-size: calc(var(--fs-scale, 1) * 13px); white-space: nowrap; }
   .amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
 
-  .equipment-box { border: 1px solid var(--gw-border); border-top: none; padding: 14px 16px; font-size: 13px; line-height: 1.7; }
+  .equipment-box { border: 1px solid var(--gw-border); border-top: none; padding: 14px 16px; font-size: calc(var(--fs-scale, 1) * 13px); line-height: 1.7; }
 
   .lecturer-box { border: 1.5px dashed var(--gw-border); background: var(--gw-bg); border-radius: 12px; padding: 20px 20px 22px; margin-top: 14px; }
-  .lecturer-note { font-size: 11.5px; color: var(--gw-text-secondary); margin: 0 0 16px; }
+  .lecturer-note { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin: 0 0 16px; }
 
   .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px 20px; }
   .field-grid.single { grid-template-columns: 1fr; }
   .field-grid + .field-grid { margin-top: 14px; }
   .full-span { grid-column: 1 / -1; }
-  .field label, .field .field-label { font-size: 12px; font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 5px; }
+  .field label, .field .field-label { font-size: calc(var(--fs-scale, 1) * 12px); font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 5px; }
 
   input[type="text"], input[type="date"], select, textarea {
-    width: 100%; font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: 13px;
+    width: 100%; font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13px);
     padding: 9px 12px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface); color: var(--gw-text);
   }
   textarea { resize: vertical; }
   input:focus, select:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
   input:disabled, select:disabled { background: var(--gw-bg); color: var(--gw-text-secondary); }
 
-  .radio-group { display: flex; gap: 18px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+  .radio-group { display: flex; gap: 18px; align-items: center; font-size: calc(var(--fs-scale, 1) * 13px); flex-wrap: wrap; }
   .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; color: var(--gw-text); }
 
-  .field-error { font-size: 11px; color: var(--gw-red); margin-top: 4px; line-height: 1.5; }
+  .field-error { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-red); margin-top: 4px; line-height: 1.5; }
   input.field-invalid, select.field-invalid, textarea.field-invalid { border-color: var(--gw-red); background: var(--gw-red-tint); }
-  .field-note { font-size: 11.5px; color: var(--gw-text-secondary); margin: -2px 0 10px; line-height: 1.6; }
+  .field-note { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin: -2px 0 10px; line-height: 1.6; }
 
   .signature-row { display: flex; justify-content: flex-end; margin-top: 10px; }
-  .signature-fields { font-size: 12px; color: var(--gw-text-secondary); text-align: right; width: 100%; max-width: 360px; }
-  .signature-fields .sig-note { text-align: left; font-size: 12px; color: var(--gw-text-secondary); margin: 0 0 12px; }
+  .signature-fields { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); text-align: right; width: 100%; max-width: 360px; }
+  .signature-fields .sig-note { text-align: left; font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin: 0 0 12px; }
   .signature-fields .sig-line { margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .signature-fields input { width: 190px; display: inline-block; }
 
   .lecturer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
   .confirmed-note {
-    background: var(--gw-green-tint); border: 1px solid #b7e1c3; color: var(--gw-green); font-size: 12.5px;
+    background: var(--gw-green-tint); border: 1px solid #b7e1c3; color: var(--gw-green); font-size: calc(var(--fs-scale, 1) * 12.5px);
     padding: 10px 14px; border-radius: 8px; margin-top: 14px;
   }
 
   .error-card {
     background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 16px; box-shadow: var(--gw-shadow-2);
-    padding: 36px 32px; text-align: center; max-width: 420px; color: var(--gw-text-secondary); font-size: 13.5px; line-height: 1.8;
+    padding: 36px 32px; text-align: center; max-width: 420px; color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 13.5px); line-height: 1.8;
   }
 
   .loading-splash {
@@ -138,13 +158,14 @@
     .a4-page { padding: 30px 20px 36px; }
     .field-grid { grid-template-columns: 1fr; }
     .signature-row { flex-direction: column; align-items: flex-end; }
-    .doc-title { font-size: 20px; }
+    .doc-title { font-size: calc(var(--fs-scale, 1) * 20px); }
   }
 
   @media print {
     .no-print { display: none !important; }
     .page-shell { padding: 0 !important; background: #ffffff !important; align-items: stretch !important; }
     .a4-page { box-shadow: none !important; border: none !important; border-radius: 0 !important; width: 210mm; max-width: 210mm; padding: 14mm 16mm; margin: 0 auto; }
+    html { --fs-scale: 1 !important; }
   }
 </style>
 </head>
@@ -169,6 +190,12 @@
 
   <div id="docShell" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
     <div class="toolbar no-print">
+      <div class="fontsize-toggle" role="group" aria-label="文字サイズ切り替え">
+        <span class="fontsize-toggle-label">文字サイズ</span>
+        <button type="button" class="fs-btn" data-fs="normal">標準</button>
+        <button type="button" class="fs-btn" data-fs="large">大</button>
+        <button type="button" class="fs-btn" data-fs="xlarge">特大</button>
+      </div>
       <button type="button" id="btnPrint" class="btn btn-outline">印刷 / PDF保存</button>
     </div>
 
@@ -658,7 +685,34 @@
     });
   }
 
+  /* 文字サイズ切り替え（標準・大・特大）。localStorageに保存し、他のページ(理事ポータルなど)でも共通で反映される。印刷時は標準サイズに固定。 */
+  var FONT_SIZE_KEY = 'temaFontSizePref';
+  function applyFontSizePref(level) {
+    document.documentElement.classList.remove('fs-large', 'fs-xlarge');
+    if (level === 'large' || level === 'xlarge') {
+      document.documentElement.classList.add('fs-' + level);
+    }
+    var btns = document.querySelectorAll('.fs-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].getAttribute('data-fs') === level);
+    }
+  }
+  function initFontSizeToggle() {
+    var saved = 'normal';
+    try { saved = localStorage.getItem(FONT_SIZE_KEY) || 'normal'; } catch (e) {}
+    applyFontSizePref(saved);
+    var btns = document.querySelectorAll('.fs-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        var level = this.getAttribute('data-fs');
+        applyFontSizePref(level);
+        try { localStorage.setItem(FONT_SIZE_KEY, level); } catch (e) {}
+      });
+    }
+  }
+
   window.addEventListener('DOMContentLoaded', function () {
+    initFontSizeToggle();
     invoiceId = getIdFromUrl();
 
     document.querySelectorAll('input[name="invoiceRegistered"]').forEach(function (r) {
