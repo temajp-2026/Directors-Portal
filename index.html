@@ -129,6 +129,7 @@
     border-radius: 12px;
     padding: 16px 18px;
   }
+  .dash-card-wide { grid-column: 1 / -1; }
   .dash-card-title { font-size: 13px; font-weight: 500; color: var(--gw-text); margin-bottom: 12px; }
   .dash-empty { font-size: 12px; color: var(--gw-text-secondary); padding: 6px 0; }
   .dash-error { font-size: 12px; color: var(--gw-yellow); background: var(--gw-yellow-tint); border-radius: 8px; padding: 8px 10px; }
@@ -143,14 +144,36 @@
   .calendar-event-title { color: var(--gw-text); font-weight: 500; }
   .calendar-event-meta { color: var(--gw-text-secondary); font-size: 11px; margin-top: 1px; }
 
-  .prep-chart { display: flex; flex-direction: column; gap: 10px; }
-  .prep-bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
-  .prep-bar-label { flex: 0 0 128px; color: var(--gw-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .prep-bar-track { flex: 1; display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--gw-bg); }
-  .prep-bar-seg { height: 100%; }
-  .prep-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--gw-border); }
-  .prep-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gw-text-secondary); }
-  .prep-legend-swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  /* 支払い待ちタスク一覧 */
+  .payment-task-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .payment-task { display: flex; align-items: center; gap: 10px; font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 8px; cursor: pointer; }
+  .payment-task:hover { background: var(--gw-bg); }
+  .payment-task-body { flex: 1; min-width: 0; }
+  .payment-task-name { color: var(--gw-text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .payment-task-meta { color: var(--gw-text-secondary); font-size: 11px; margin-top: 1px; }
+  .payment-task-due { flex: 0 0 auto; font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .due-normal { background: var(--gw-bg); color: var(--gw-text-secondary); }
+  .due-warn { background: var(--gw-yellow-tint); color: #a35a00; }
+  .due-danger { background: var(--gw-red-tint); color: var(--gw-red); }
+
+  /* 講座の準備状況(6段階チェックリスト) */
+  .prep-legend-top { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11px; color: var(--gw-text-secondary); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--gw-border); }
+  .prep-legend-top b { color: var(--gw-text); }
+  .prep-checklist { display: flex; flex-direction: column; gap: 8px; }
+  .prep-row { border: 1px solid var(--gw-border); border-radius: 10px; padding: 10px 12px; }
+  .prep-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .prep-row-name { font-size: 13px; font-weight: 500; color: var(--gw-text); }
+  .prep-row-date { font-size: 11px; color: var(--gw-text-secondary); white-space: nowrap; }
+  .prep-steps { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prep-step {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; background: var(--gw-bg); color: var(--gw-text-secondary); border: 1px solid var(--gw-border);
+  }
+  .prep-step.done { background: var(--gw-green); color: #fff; border-color: var(--gw-green); }
+  .prep-alerts { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .alert-pill { display: inline-block; font-size: 10.5px; font-weight: 500; padding: 2px 9px; border-radius: 999px; }
+  .alert-pill.warn { background: var(--gw-yellow-tint); color: #a35a00; }
+  .alert-pill.danger { background: var(--gw-red-tint); color: var(--gw-red); }
 
   /* ---------- メニュー ---------- */
   .menu-grid {
@@ -197,9 +220,19 @@
   .course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
   .course-card {
     background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 12px; padding: 16px 18px; cursor: pointer;
-    transition: box-shadow .15s ease;
+    transition: box-shadow .15s ease; display: flex; gap: 12px;
   }
   .course-card:hover { box-shadow: var(--gw-shadow-1); }
+  .course-card-thumb {
+    width: 52px; height: 68px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--gw-border); background: var(--gw-bg);
+  }
+  .course-card-thumb-placeholder {
+    width: 52px; height: 68px; border-radius: 6px; flex-shrink: 0; border: 1px dashed var(--gw-border);
+    background: var(--gw-bg); display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: var(--gw-text-secondary); opacity: .5;
+  }
+  .course-card-body { flex: 1; min-width: 0; }
   .course-name { font-weight: 500; font-size: 14.5px; color: var(--gw-text); margin-bottom: 6px; }
   .course-meta { font-size: 12px; color: var(--gw-text-secondary); line-height: 1.9; }
   .status-badge {
@@ -209,11 +242,6 @@
   .status-実施予定 { background: var(--gw-blue-tint); color: var(--gw-blue-dark); }
   .status-実施済み { background: var(--gw-green-tint); color: var(--gw-green); }
   .status-中止 { background: var(--gw-red-tint); color: var(--gw-red); }
-  .pdf-badge {
-    display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 10px 3px 8px;
-    border-radius: 999px; margin-top: 8px; margin-left: 6px; background: var(--gw-bg); color: var(--gw-text-secondary);
-    border: 1px solid var(--gw-border);
-  }
 
   .empty-state { text-align: center; color: var(--gw-text-secondary); font-size: 13px; padding: 40px 0; }
 
@@ -238,6 +266,9 @@
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
   .modal-actions-split { justify-content: space-between; }
   .field-note { font-size: 11.5px; color: var(--gw-text-secondary); line-height: 1.6; margin: -4px 0 12px; }
+  .checkbox-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px 14px; }
+  .checkbox-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
+  .checkbox-item input { width: auto; }
 
   .pdf-field { border-top: 1px solid var(--gw-border); padding-top: 14px; margin-top: 4px; }
   .pdf-none { font-size: 12px; color: var(--gw-text-secondary); margin-bottom: 8px; }
@@ -309,8 +340,23 @@
         <div id="calendarLoading" class="dash-empty">読み込み中…</div>
       </div>
       <div class="dash-card">
-        <div class="dash-card-title">講座の準備状況（請求書関連）</div>
-        <div id="prepChart" class="prep-chart"></div>
+        <div class="dash-card-title">支払い待ちタスク</div>
+        <div id="paymentTaskList" class="payment-task-list"></div>
+        <div id="paymentTaskEmpty" class="dash-empty hidden">支払い待ちの請求書はありません。</div>
+        <div id="paymentTaskError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
+        <div id="paymentTaskLoading" class="dash-empty">読み込み中…</div>
+      </div>
+      <div class="dash-card dash-card-wide">
+        <div class="dash-card-title">講座の準備状況</div>
+        <div class="prep-legend-top">
+          <span><b>①</b> 講師打ち合わせ済み</span>
+          <span><b>②</b> 請書兼請求書送付済み</span>
+          <span><b>③</b> 講師返信済み</span>
+          <span><b>④</b> 講座準備資料作成済み</span>
+          <span><b>⑤</b> 講座開催済み</span>
+          <span><b>⑥</b> 支払済み</span>
+        </div>
+        <div id="prepChecklist" class="prep-checklist"></div>
         <div id="prepChartEmpty" class="dash-empty hidden">対象の講座がありません。</div>
         <div id="prepChartError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
         <div id="prepChartLoading" class="dash-empty">読み込み中…</div>
@@ -397,6 +443,13 @@
       <label for="c-status">ステータス</label>
       <select id="c-status"></select>
     </div>
+    <div class="field">
+      <label>準備状況</label>
+      <div class="checkbox-grid">
+        <label class="checkbox-item"><input type="checkbox" id="c-lecturerMeetingDone"> 講師打ち合わせ済み</label>
+        <label class="checkbox-item"><input type="checkbox" id="c-prepMaterialsDone"> 講座準備資料作成済み</label>
+      </div>
+    </div>
 
     <div class="field pdf-field" id="pdfFieldWrap">
       <label>講座案内PDF</label>
@@ -430,8 +483,16 @@
 <div id="wpModal" class="modal-overlay hidden">
   <div class="modal-panel" style="max-width: 720px;">
     <div class="modal-title">ワードプレス用 案内文HTMLを作成</div>
-    <div class="field-note" style="margin-bottom:14px;">
+    <div class="field-note" style="margin-bottom:10px;">
       講座の案内PDFを見ながら、以下の項目を入力してください。入力内容から、そのままワードプレスに貼り付けられるHTMLを生成します。
+    </div>
+    <div class="field" style="margin-bottom:14px;">
+      <button type="button" class="btn btn-outline" id="btnWpOcr">📄 PDFから自動入力</button>
+      <div class="field-note" style="margin:6px 0 0;">添付された案内PDFを読み取り、日時・定員・場所・参加費などを自動入力します（精度は完全ではないため、入力後は必ず内容をご確認ください）。</div>
+      <div id="wpOcrRawWrap" class="hidden" style="margin-top:8px;">
+        <label>PDFから読み取った全文（参考用）</label>
+        <textarea id="wpOcrRawText" rows="5" readonly style="font-size:11px;"></textarea>
+      </div>
     </div>
 
     <div class="field-grid">
@@ -507,6 +568,7 @@
   var editingCoursePdf = null; // { pdfFileId, pdfFileName, pdfUrl, pdfThumbnailUrl } | null
   var wpContextCourse = null;
   var invoicesCache = [];
+  var appSettings = { createAlertDays: 40, unrespondedAlertDays: 14, paymentWarningDays: 2 };
   var VENUE_HALL_2F = '白王ビル２Fホール';
   var VENUE_HALL_2F_ADDRESS = '東京都文京区後楽2-3-10';
 
@@ -649,7 +711,7 @@
   /* ---------- ダッシュボード ---------- */
   function loadDashboard() {
     loadCalendarEvents();
-    loadPrepChart();
+    loadDashboardInvoiceData();
   }
 
   function loadCalendarEvents() {
@@ -699,99 +761,193 @@
     });
   }
 
-  var PREP_STAGE_ORDER = ['未作成', '作成済み', '確定済み', '支払い済み', '取消'];
-  var PREP_STAGE_COLORS = {
-    '未作成': '#9aa0a6',
-    '作成済み': 'var(--gw-blue)',
-    '確定済み': '#7cb9f5',
-    '支払い済み': 'var(--gw-green)',
-    '取消': 'var(--gw-border)'
-  };
+  function daysUntilLocal(dateStr) {
+    if (!dateStr) return null;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d - today) / 86400000);
+  }
 
-  function loadPrepChart() {
-    callApi('listInvoices').then(function (res) {
+  /** 請求書ごとのアラート(支払期限・講師未返信など)を判定する(請求書管理簿と同じ基準) */
+  function computeInvoiceAlerts(inv) {
+    var alerts = [];
+    if (inv.status === '取消') return alerts;
+    if (inv.status === '作成済み') {
+      var du = daysUntilLocal(inv.eventDate);
+      if (du !== null && du <= appSettings.unrespondedAlertDays) {
+        alerts.push({ level: 'danger', label: '講師側未返信' });
+      }
+    }
+    if (inv.status === '確定済み' && inv.paymentDueDate) {
+      var dd = daysUntilLocal(inv.paymentDueDate);
+      if (dd !== null) {
+        if (dd < 0) alerts.push({ level: 'danger', label: '支払期限超過' });
+        else if (dd <= appSettings.paymentWarningDays) alerts.push({ level: 'warn', label: '支払期限接近' });
+      }
+    }
+    return alerts;
+  }
+
+  function loadDashboardInvoiceData() {
+    Promise.all([callApi('getSettings'), callApi('listInvoices')]).then(function (results) {
+      var settingsRes = results[0], invoicesRes = results[1];
+      if (settingsRes && settingsRes.ok) { appSettings = settingsRes.data || appSettings; }
+      $('paymentTaskLoading').classList.add('hidden');
       $('prepChartLoading').classList.add('hidden');
-      if (!res.ok) {
+      if (!invoicesRes || !invoicesRes.ok) {
+        $('paymentTaskError').classList.remove('hidden');
         $('prepChartError').classList.remove('hidden');
         return;
       }
-      invoicesCache = res.data || [];
-      renderPrepChart(invoicesCache);
+      invoicesCache = invoicesRes.data || [];
+      renderPaymentTasks(invoicesCache);
+      renderPrepChecklist(invoicesCache);
     }).catch(function () {
+      $('paymentTaskLoading').classList.add('hidden');
       $('prepChartLoading').classList.add('hidden');
+      $('paymentTaskError').classList.remove('hidden');
       $('prepChartError').classList.remove('hidden');
     });
   }
 
-  /** 講座ごとに、紐付く請求書の進捗ステージを1つ判定する(複数ある場合は最新のものを優先) */
-  function coursePrepStage(course, invoices) {
-    var linked = invoices.filter(function (inv) { return inv.courseId === course.id; });
-    if (!linked.length) return '未作成';
-    // 取消以外を優先して最新のものを見る
-    var active = linked.filter(function (inv) { return inv.status !== '取消'; });
-    var target = (active.length ? active : linked).sort(function (a, b) {
-      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
-    })[0];
-    return PREP_STAGE_ORDER.indexOf(target.status) !== -1 ? target.status : '未作成';
+  /** 支払い待ち(作成済み・確定済みでまだ支払われていない)請求書を、支払期日の近い順にすべて表示する */
+  function renderPaymentTasks(invoices) {
+    var list = $('paymentTaskList');
+    list.innerHTML = '';
+    var pending = invoices.filter(function (inv) { return inv.status === '作成済み' || inv.status === '確定済み'; });
+    if (!pending.length) { $('paymentTaskEmpty').classList.remove('hidden'); return; }
+    $('paymentTaskEmpty').classList.add('hidden');
+    pending.sort(function (a, b) {
+      var da = a.paymentDueDate || '9999-99-99';
+      var db = b.paymentDueDate || '9999-99-99';
+      return da.localeCompare(db);
+    });
+    pending.forEach(function (inv) {
+      var course = courses.filter(function (c) { return c.id === inv.courseId; })[0];
+      var name = (course && course.name) || inv.topic || '(講座名未設定)';
+      var total = (Number(inv.feeExTax) || 0) + (Number(inv.travelFee) || 0) + (Number(inv.lodgingFee) || 0);
+
+      var row = document.createElement('div');
+      row.className = 'payment-task';
+      var body = document.createElement('div');
+      body.className = 'payment-task-body';
+      var nameEl = document.createElement('div');
+      nameEl.className = 'payment-task-name';
+      nameEl.textContent = name;
+      var metaEl = document.createElement('div');
+      metaEl.className = 'payment-task-meta';
+      var metaParts = [];
+      if (inv.lecturerName) metaParts.push(inv.lecturerName);
+      metaParts.push('¥' + total.toLocaleString());
+      metaParts.push(inv.status);
+      metaEl.textContent = metaParts.join('　');
+      body.appendChild(nameEl);
+      body.appendChild(metaEl);
+
+      var due = document.createElement('div');
+      if (inv.paymentDueDate) {
+        var dd = daysUntilLocal(inv.paymentDueDate);
+        due.textContent = jpDate(inv.paymentDueDate) + (dd !== null && dd < 0 ? '（超過）' : '');
+        due.className = 'payment-task-due ' + (dd !== null && dd < 0 ? 'due-danger' : (dd !== null && dd <= appSettings.paymentWarningDays ? 'due-warn' : 'due-normal'));
+      } else {
+        due.textContent = '期日未設定';
+        due.className = 'payment-task-due due-normal';
+      }
+
+      row.appendChild(body);
+      row.appendChild(due);
+      row.addEventListener('click', function () {
+        window.open('invoice-ledger.html?open=' + encodeURIComponent(inv.id), '_blank');
+      });
+      list.appendChild(row);
+    });
   }
 
-  function renderPrepChart(invoices) {
-    var chart = $('prepChart');
-    chart.innerHTML = '';
-    // 中止以外・直近120日以内に開催予定の講座を対象にする
+  var PREP_STEP_LABELS = [
+    '講師打ち合わせ済み', '請書兼請求書送付済み', '講師返信済み',
+    '講座準備資料作成済み', '講座開催済み', '支払済み'
+  ];
+
+  /** 講座に紐付く請求書のうち、参照すべき1件を選ぶ(取消以外・最新更新を優先) */
+  function findInvoiceForCourse(course, invoices) {
+    var linked = invoices.filter(function (inv) { return inv.courseId === course.id; });
+    if (!linked.length) return null;
+    var active = linked.filter(function (inv) { return inv.status !== '取消'; });
+    return (active.length ? active : linked).sort(function (a, b) {
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    })[0];
+  }
+
+  /** 講座の準備状況を6段階の真偽値で判定する(①〜⑥はPREP_STEP_LABELSに対応) */
+  function coursePrepSteps(course, inv) {
+    return [
+      !!course.lecturerMeetingDone,
+      !!inv,
+      !!(inv && (inv.status === '確定済み' || inv.status === '支払い済み')),
+      !!course.prepMaterialsDone,
+      course.status === '実施済み',
+      !!(inv && inv.status === '支払い済み')
+    ];
+  }
+
+  function renderPrepChecklist(invoices) {
+    var wrap = $('prepChecklist');
+    wrap.innerHTML = '';
+    // 中止以外・直近(-30日〜+120日)の講座を対象にする
     var target = courses.filter(function (c) {
       if (c.status === '中止') return false;
       var du = daysUntilLocal(c.eventDate);
-      return du === null || (du >= -14 && du <= 120);
+      return du === null || (du >= -30 && du <= 120);
     });
     if (!target.length) { $('prepChartEmpty').classList.remove('hidden'); return; }
     $('prepChartEmpty').classList.add('hidden');
 
     target.sort(function (a, b) { return String(a.eventDate || '').localeCompare(String(b.eventDate || '')); });
 
-    target.slice(0, 8).forEach(function (c) {
-      var stage = coursePrepStage(c, invoices);
+    target.slice(0, 12).forEach(function (c) {
+      var inv = findInvoiceForCourse(c, invoices);
+      var steps = coursePrepSteps(c, inv);
+
       var row = document.createElement('div');
-      row.className = 'prep-bar-row';
-      var label = document.createElement('div');
-      label.className = 'prep-bar-label';
-      label.textContent = (c.eventDate ? c.eventDate.slice(5).replace('-', '/') + '　' : '') + (c.name || '(名称未設定)');
-      label.title = c.name || '';
-      var track = document.createElement('div');
-      track.className = 'prep-bar-track';
-      var seg = document.createElement('div');
-      seg.className = 'prep-bar-seg';
-      var stageIdx = PREP_STAGE_ORDER.indexOf(stage);
-      var pct = stage === '未作成' ? 8 : Math.round(((stageIdx + 1) / (PREP_STAGE_ORDER.length - 1)) * 100);
-      seg.style.width = pct + '%';
-      seg.style.background = PREP_STAGE_COLORS[stage] || '#9aa0a6';
-      seg.title = stage;
-      track.appendChild(seg);
-      row.appendChild(label);
-      row.appendChild(track);
-      chart.appendChild(row);
-    });
+      row.className = 'prep-row';
 
-    var legend = document.createElement('div');
-    legend.className = 'prep-legend';
-    PREP_STAGE_ORDER.forEach(function (stage) {
-      var item = document.createElement('div');
-      item.className = 'prep-legend-item';
-      var sw = document.createElement('span');
-      sw.className = 'prep-legend-swatch';
-      sw.style.background = PREP_STAGE_COLORS[stage];
-      item.appendChild(sw);
-      item.appendChild(document.createTextNode(stage));
-      legend.appendChild(item);
-    });
-    chart.appendChild(legend);
-  }
+      var head = document.createElement('div');
+      head.className = 'prep-row-head';
+      var nameEl = document.createElement('div');
+      nameEl.className = 'prep-row-name';
+      nameEl.textContent = c.name || '(名称未設定)';
+      var dateEl = document.createElement('div');
+      dateEl.className = 'prep-row-date';
+      dateEl.textContent = c.eventDate ? jpDate(c.eventDate, true) : '日程未定';
+      head.appendChild(nameEl);
+      head.appendChild(dateEl);
+      row.appendChild(head);
 
-  function daysUntilLocal(dateStr) {
-    if (!dateStr) return null;
-    var today = new Date(); today.setHours(0, 0, 0, 0);
-    var d = new Date(dateStr + 'T00:00:00');
-    return Math.round((d - today) / 86400000);
+      var stepsWrap = document.createElement('div');
+      stepsWrap.className = 'prep-steps';
+      steps.forEach(function (done, i) {
+        var step = document.createElement('div');
+        step.className = 'prep-step' + (done ? ' done' : '');
+        step.textContent = done ? '✓' : String(i + 1);
+        step.title = (i + 1) + '. ' + PREP_STEP_LABELS[i] + (done ? '（完了）' : '（未完了）');
+        stepsWrap.appendChild(step);
+      });
+
+      var alerts = inv ? computeInvoiceAlerts(inv) : [];
+      if (alerts.length) {
+        var alertsWrap = document.createElement('div');
+        alertsWrap.className = 'prep-alerts';
+        alerts.forEach(function (a) {
+          var pill = document.createElement('span');
+          pill.className = 'alert-pill ' + a.level;
+          pill.textContent = a.label;
+          alertsWrap.appendChild(pill);
+        });
+        stepsWrap.appendChild(alertsWrap);
+      }
+      row.appendChild(stepsWrap);
+      wrap.appendChild(row);
+    });
   }
 
   function fillSelect(selectEl, values, emptyLabel) {
@@ -880,6 +1036,10 @@
       var card = document.createElement('div');
       card.className = 'course-card';
       card.innerHTML =
+        (c.pdfThumbnailUrl
+          ? '<img class="course-card-thumb" alt="案内PDFサムネイル">'
+          : '<div class="course-card-thumb-placeholder">📄</div>') +
+        '<div class="course-card-body">' +
         '<div class="course-name"></div>' +
         '<div class="course-meta">' +
         '開催日時：<span class="c-date"></span><span class="c-time"></span><br>' +
@@ -887,7 +1047,8 @@
         '担当理事：<span class="c-director"></span>' + (c.department ? '（<span class="c-department"></span>）' : '') +
         '</div>' +
         '<span class="status-badge"></span>' +
-        (c.pdfFileId ? '<span class="pdf-badge">📎 案内PDF</span>' : '');
+        '</div>';
+      if (c.pdfThumbnailUrl) { card.querySelector('.course-card-thumb').src = c.pdfThumbnailUrl; }
       card.querySelector('.course-name').textContent = c.name || '(名称未設定)';
       card.querySelector('.c-date').textContent = c.eventDate ? jpDate(c.eventDate, true) : '未定';
       card.querySelector('.c-time').textContent = (c.startTime || c.endTime) ? '　' + jpTimeRange(c.startTime, c.endTime) : '';
@@ -915,6 +1076,8 @@
     $('c-department').value = course ? (course.department || '') : '';
     $('c-format').value = course ? (course.format || '座学') : '座学';
     $('c-status').value = course ? course.status : '準備中';
+    $('c-lecturerMeetingDone').checked = !!(course && course.lecturerMeetingDone);
+    $('c-prepMaterialsDone').checked = !!(course && course.prepMaterialsDone);
 
     $('c-pdfFile').value = '';
     $('pdfUploadStatus').classList.add('hidden');
@@ -1011,7 +1174,7 @@
       showToast('講座を削除しました');
       return callApi('listCourses');
     }).then(function (res) {
-      if (res && res.ok) { courses = res.data; renderCourses(); loadPrepChart(); }
+      if (res && res.ok) { courses = res.data; renderCourses(); loadDashboardInvoiceData(); }
     }).finally(function () {
       btn.disabled = false;
     });
@@ -1033,6 +1196,8 @@
     prefillWpModal(course);
     $('wpResult').classList.add('hidden');
     $('wpResultHtml').value = '';
+    $('wpOcrRawWrap').classList.add('hidden');
+    $('wpOcrRawText').value = '';
     $('wpModal').classList.remove('hidden');
   }
 
@@ -1204,6 +1369,92 @@
     return html;
   }
 
+  /** OCRで読み取った全文から、それらしいパターンを正規表現で拾い出す(完全ではないため確認前提の下書き) */
+  function parseOcrTextToWpFields(text) {
+    var result = {};
+    var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+
+    var dateMatch = text.match(/\d{4}年\s*\d{1,2}月\s*\d{1,2}日(?:\s*[（(][日月火水木金土][）)])?/);
+    var timeMatch = text.match(/\d{1,2}[:：]\d{2}\s*[~〜～\-ー]\s*\d{1,2}[:：]\d{2}/);
+    if (dateMatch || timeMatch) {
+      result.eventDateTimeText = [
+        dateMatch ? dateMatch[0] : '',
+        timeMatch ? timeMatch[0].replace(/：/g, ':').replace(/[~〜ー]/g, '～') : ''
+      ].filter(Boolean).join('　');
+    }
+
+    var capMatch = text.match(/定員[\s:：]*([0-9０-９]+\s*名[^\n]*)/);
+    if (capMatch) result.capacityText = capMatch[1].trim();
+
+    var venueMatch = text.match(/(?:会場|場所)[\s:：]*([^\n]+)/);
+    if (venueMatch) result.venueName = venueMatch[1].trim();
+
+    var addrMatch = text.match(/[^\n]*(?:都|道|府|県)[^\n]*(?:区|市|町|村)[^\n]*/);
+    if (addrMatch) result.venueAddress = addrMatch[0].trim();
+
+    var applyMatch = text.match(/申[込し][込み]?方法[\s:：]*([^\n]+)/);
+    if (applyMatch) result.applyMethodText = applyMatch[1].trim();
+
+    var priceLines = lines.filter(function (l) { return /(円|無料)/.test(l) && l.length < 40; });
+    if (priceLines.length) result.priceLines = priceLines.slice(0, 6);
+
+    var bulletLines = lines
+      .filter(function (l) { return /^[・●○\-‐]/.test(l); })
+      .map(function (l) { return l.replace(/^[・●○\-‐]\s*/, ''); });
+    if (bulletLines.length) result.contentList = bulletLines.slice(0, 10);
+
+    return result;
+  }
+
+  /** 空欄になっているフォーム項目にのみOCR結果を反映する(既に入力済みの内容は上書きしない) */
+  function applyOcrFieldsToForm(fields) {
+    var map = {
+      eventDateTimeText: 'wp-eventDateTimeText',
+      capacityText: 'wp-capacityText',
+      venueName: 'wp-venueName',
+      venueAddress: 'wp-venueAddress',
+      applyMethodText: 'wp-applyMethodText'
+    };
+    Object.keys(map).forEach(function (k) {
+      if (fields[k] && !$(map[k]).value.trim()) { $(map[k]).value = fields[k]; }
+    });
+    if (fields.priceLines && fields.priceLines.length && !$('wp-priceLines').value.trim()) {
+      $('wp-priceLines').value = fields.priceLines.join('\n');
+    }
+    if (fields.contentList && fields.contentList.length && !$('wp-contentList').value.trim()) {
+      $('wp-contentList').value = fields.contentList.join('\n');
+    }
+  }
+
+  function ocrAndPrefillWp() {
+    if (!wpContextCourse || !wpContextCourse.id) return;
+    if (!editingCoursePdf || !editingCoursePdf.pdfFileId) { showToast('先に講座案内PDFを添付してください'); return; }
+    var btn = $('btnWpOcr');
+    btn.disabled = true;
+    btn.textContent = 'PDFを読み込み中…';
+    callApi('ocrCoursePdf', { courseId: wpContextCourse.id }).then(function (res) {
+      if (!res.ok) {
+        var msg = res.error === 'pdf_not_found' ? '添付されたPDFが見つかりませんでした'
+          : res.error === 'ocr_failed' ? 'PDFの読み取りに失敗しました。GAS側でDrive API(高度なサービス)が有効になっているかご確認ください。'
+          : 'PDFの読み取りに失敗しました：' + res.error;
+        showToast(msg);
+        return;
+      }
+      var text = (res.data && res.data.text) || '';
+      if (!text.trim()) { showToast('PDFから文字を読み取れませんでした'); return; }
+      var fields = parseOcrTextToWpFields(text);
+      applyOcrFieldsToForm(fields);
+      $('wpOcrRawText').value = text;
+      $('wpOcrRawWrap').classList.remove('hidden');
+      showToast('PDFの内容を自動入力しました。内容をご確認ください。');
+    }).catch(function () {
+      showToast('PDFの読み取りに失敗しました');
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = '📄 PDFから自動入力';
+    });
+  }
+
   function handleWpGenerate() {
     var fields = collectWpFields();
     if (!fields.headerMain) { showToast('見出し（タイトル）を入力してください'); return; }
@@ -1234,7 +1485,9 @@
       directorName: $('c-directorName').value,
       department: $('c-department').value,
       format: $('c-format').value,
-      status: $('c-status').value
+      status: $('c-status').value,
+      lecturerMeetingDone: $('c-lecturerMeetingDone').checked,
+      prepMaterialsDone: $('c-prepMaterialsDone').checked
     };
     if (!payload.name) { showToast('講座名を入力してください'); return; }
     var action = editingCourseId ? 'updateCourse' : 'createCourse';
@@ -1247,7 +1500,7 @@
       showToast('保存しました');
       return callApi('listCourses');
     }).then(function (res) {
-      if (res && res.ok) { courses = res.data; renderCourses(); }
+      if (res && res.ok) { courses = res.data; renderCourses(); renderPrepChecklist(invoicesCache); }
     }).finally(function () {
       saveBtn.disabled = false;
       saveBtn.textContent = '保存';
@@ -1286,6 +1539,7 @@
 
     $('btnOpenWp').addEventListener('click', function () { openWpModal(wpContextCourse); });
     $('btnWpCancel').addEventListener('click', closeWpModal);
+    $('btnWpOcr').addEventListener('click', ocrAndPrefillWp);
     $('btnWpPreview').addEventListener('click', handleWpPreview);
     $('btnWpGenerate').addEventListener('click', handleWpGenerate);
     $('wpModal').addEventListener('click', function (e) {

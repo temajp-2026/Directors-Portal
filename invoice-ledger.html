@@ -361,6 +361,7 @@
   var appSettings = { createAlertDays: 40, unrespondedAlertDays: 14, paymentWarningDays: 2 };
   var editingInvoiceId = null;
   var paymentDueDateTouched = false;
+  var queryOpenHandled = false;
 
   // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、
   // 同じタブ内で移動してきた場合は再ログインを求めないようにする。
@@ -583,6 +584,18 @@
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     renderList();
     loadMasterData();
+    openInvoiceFromQueryParam();
+  }
+
+  /** ダッシュボード等から ?open=<請求書ID> でリンクされた場合、該当の請求書を自動で開く(初回のみ) */
+  function openInvoiceFromQueryParam() {
+    if (queryOpenHandled) return;
+    queryOpenHandled = true;
+    var params = new URLSearchParams(window.location.search);
+    var openId = params.get('open');
+    if (!openId) return;
+    var inv = invoices.filter(function (i) { return i.id === openId; })[0];
+    if (inv) { openInvoiceModal(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
   }
 
   function handleCredentialResponse(response) {
