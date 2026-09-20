@@ -31,6 +31,7 @@
   body {
     font-family: 'Roboto', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
     color: var(--gw-text);
+    line-height: 1.5;
   }
 
   /* ---------- 設定バナー ---------- */
@@ -170,6 +171,14 @@
   .dash-empty { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); padding: 6px 0; }
   .dash-error { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-yellow); background: var(--gw-yellow-tint); border-radius: 8px; padding: 8px 10px; }
 
+  /* 講座進捗のコメント */
+  .pp-comment-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; max-height: 260px; overflow-y: auto; }
+  .pp-comment-item { border: 1px solid var(--gw-border); border-radius: 8px; padding: 8px 12px; }
+  .pp-comment-item-head { display: flex; justify-content: space-between; gap: 8px; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 4px; }
+  .pp-comment-item-body { font-size: calc(var(--fs-scale, 1) * 13px); color: var(--gw-text); white-space: pre-wrap; }
+  .pp-comment-form { display: flex; flex-direction: column; gap: 8px; }
+  .pp-comment-form .btn { align-self: flex-end; }
+
   .calendar-list { display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto; }
   .calendar-event { display: flex; gap: 10px; align-items: flex-start; font-size: calc(var(--fs-scale, 1) * 12.5px); }
   .calendar-event-date {
@@ -181,16 +190,37 @@
   .calendar-event-meta { color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 11px); margin-top: 1px; }
 
   /* 支払い待ちタスク一覧 */
-  .payment-task-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
-  .payment-task { display: flex; align-items: center; gap: 10px; font-size: calc(var(--fs-scale, 1) * 12.5px); padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 8px; cursor: pointer; }
-  .payment-task:hover { background: var(--gw-bg); }
+  .payment-task-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+  .payment-task { display: flex; flex-direction: column; gap: 8px; font-size: calc(var(--fs-scale, 1) * 12.5px); padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 8px; }
+  .payment-task-main { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .payment-task-main:hover .payment-task-name { text-decoration: underline; }
   .payment-task-body { flex: 1; min-width: 0; }
   .payment-task-name { color: var(--gw-text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .payment-task-meta { color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 11px); margin-top: 1px; }
   .payment-task-due { flex: 0 0 auto; font-size: calc(var(--fs-scale, 1) * 11px); font-weight: 500; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .payment-task-footer { display: flex; justify-content: flex-end; border-top: 1px dashed var(--gw-border); padding-top: 8px; }
+  .payment-task-pay-btn { padding: 6px 14px; font-size: calc(var(--fs-scale, 1) * 11.5px); }
+
+  /* 最近のコメント一覧 */
+  .recent-comment-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+  .recent-comment-item { padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 8px; cursor: pointer; font-size: calc(var(--fs-scale, 1) * 12.5px); }
+  .recent-comment-item:hover { background: var(--gw-bg); }
+  .recent-comment-course { font-weight: 500; color: var(--gw-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .recent-comment-meta { color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 11px); margin: 2px 0 4px; }
+  .recent-comment-body { color: var(--gw-text); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .due-normal { background: var(--gw-bg); color: var(--gw-text-secondary); }
   .due-warn { background: var(--gw-yellow-tint); color: #a35a00; }
   .due-danger { background: var(--gw-red-tint); color: var(--gw-red); }
+
+  /* お知らせ（tema.jp） */
+  .link-small { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-blue); text-decoration: none; white-space: nowrap; }
+  .link-small:hover { text-decoration: underline; }
+  .announcement-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+  .announcement-item {
+    display: block; padding: 7px 8px; border-radius: 8px; font-size: calc(var(--fs-scale, 1) * 12.5px);
+    color: var(--gw-text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .announcement-item:hover { background: var(--gw-bg); text-decoration: underline; }
 
   /* 講座の準備状況(6段階チェックリスト) */
   .prep-legend-top { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--gw-border); }
@@ -300,6 +330,18 @@
   .modal-title { font-size: calc(var(--fs-scale, 1) * 17px); font-weight: 500; color: var(--gw-text); margin-bottom: 18px; }
   .modal-kicker { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); letter-spacing: .03em; margin-bottom: 2px; }
   #prepProgressModal .modal-title { margin-bottom: 4px; }
+  #prepProgressModal .pp-sticky-header {
+    position: sticky; top: -26px; margin: -26px -28px 0; padding: 16px 54px 12px 28px;
+    background: var(--gw-surface); z-index: 5; border-bottom: 1px solid var(--gw-border);
+  }
+  #prepProgressModal .pp-sticky-header .modal-title { margin-bottom: 0; }
+  .pp-close-btn {
+    position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--gw-border); background: var(--gw-surface); color: var(--gw-text-secondary);
+    font-size: calc(var(--fs-scale, 1) * 20px); line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .pp-close-btn:hover { background: var(--gw-bg); border-color: #c4c7cc; }
   .field { margin-bottom: 14px; }
   .field label { font-size: calc(var(--fs-scale, 1) * 12px); font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 5px; }
   .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 14px; }
@@ -317,7 +359,8 @@
   .checkbox-item { display: flex; align-items: center; gap: 7px; font-size: calc(var(--fs-scale, 1) * 12.5px); cursor: pointer; }
   .checkbox-item input { width: auto; }
 
-  .ov-meta { font-size: calc(var(--fs-scale, 1) * 13px); color: var(--gw-text-secondary); line-height: 2; margin-bottom: 14px; }
+  .ov-meta { font-size: calc(var(--fs-scale, 1) * 13px); color: var(--gw-text-secondary); line-height: 1.7; margin-bottom: 14px; }
+  .ov-meta > div { margin-bottom: 4px; }
   .ov-meta .status-badge { margin-top: 6px; }
   .ov-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 18px; }
   .ov-actions .btn { width: 100%; }
@@ -436,6 +479,21 @@
         <div id="paymentTaskEmpty" class="dash-empty hidden">支払い待ちの請求書はありません。</div>
         <div id="paymentTaskError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
         <div id="paymentTaskLoading" class="dash-empty">読み込み中…</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">最近のコメント</div>
+        <div id="recentCommentList" class="recent-comment-list"></div>
+        <div id="recentCommentEmpty" class="dash-empty hidden">まだコメントはありません。</div>
+        <div id="recentCommentLoading" class="dash-empty">読み込み中…</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title-row">
+          <div class="dash-card-title">お知らせ（tema.jp）</div>
+          <a class="link-small" href="https://tema.jp/new_course_list/" target="_blank" rel="noopener">もっと見る</a>
+        </div>
+        <div id="announcementList" class="announcement-list"></div>
+        <div id="announcementEmpty" class="dash-empty hidden">お知らせはありません。</div>
+        <div id="announcementLoading" class="dash-empty">読み込み中…</div>
       </div>
       <div class="dash-card dash-card-wide">
         <div class="dash-card-title">進捗状況</div>
@@ -571,8 +629,11 @@
 <!-- 講座進捗ページ(講座内容の概要＋各種操作＋準備進捗をまとめたトップページ) -->
 <div id="prepProgressModal" class="modal-overlay hidden">
   <div class="modal-panel" style="max-width: 680px;">
-    <div class="modal-kicker">講座進捗</div>
-    <div class="modal-title" id="ppCourseName">講座名</div>
+    <div class="pp-sticky-header">
+      <button type="button" class="pp-close-btn" id="btnPpCloseX" aria-label="閉じる">×</button>
+      <div class="modal-kicker">講座進捗</div>
+      <div class="modal-title" id="ppCourseName">講座名</div>
+    </div>
     <div class="ov-meta">
       <div>開催日：<span id="ppDateTime"></span></div>
       <div>開催場所：<span id="ppVenue"></span></div>
@@ -636,6 +697,16 @@
           <input type="text" id="pp-formVenueColumnOverride" placeholder="例：参加方法（回答シートの見出し行と完全に一致する文字列）">
         </div>
       </details>
+    </div>
+
+    <div class="field">
+      <label>⑥ コメント</label>
+      <div id="ppCommentList" class="pp-comment-list"></div>
+      <div id="ppCommentEmpty" class="dash-empty hidden">まだコメントはありません。</div>
+      <div class="pp-comment-form">
+        <textarea id="pp-commentInput" rows="2" placeholder="他の理事への申し送り事項など"></textarea>
+        <button type="button" class="btn btn-outline" id="btnPpCommentAdd">コメントを投稿</button>
+      </div>
     </div>
 
     <div class="modal-actions modal-actions-split">
@@ -922,6 +993,79 @@
     loadCalendarEvents();
     loadDashboardInvoiceData();
     loadFormSignupSummaries();
+    loadRecentComments();
+    loadAnnouncements();
+  }
+
+  /** ダッシュボードの「お知らせ（tema.jp）」欄を読み込む */
+  function loadAnnouncements() {
+    callApi('listAnnouncements').then(function (res) {
+      $('announcementLoading').classList.add('hidden');
+      if (!res.ok) { return; }
+      renderAnnouncements(res.data || []);
+    }).catch(function () {
+      $('announcementLoading').classList.add('hidden');
+    });
+  }
+
+  function renderAnnouncements(items) {
+    var list = $('announcementList');
+    list.innerHTML = '';
+    if (!items.length) { $('announcementEmpty').classList.remove('hidden'); return; }
+    $('announcementEmpty').classList.add('hidden');
+    items.forEach(function (a) {
+      var a2 = document.createElement('a');
+      a2.className = 'announcement-item';
+      a2.href = a.url || 'https://tema.jp/new_course_list/';
+      a2.target = '_blank';
+      a2.rel = 'noopener';
+      a2.textContent = a.title || '';
+      a2.title = a.title || '';
+      list.appendChild(a2);
+    });
+  }
+
+  /** ダッシュボードの「最近のコメント」欄を読み込む(全講座から新しい順に最大8件) */
+  function loadRecentComments() {
+    callApi('listComments', { limit: 8 }).then(function (res) {
+      $('recentCommentLoading').classList.add('hidden');
+      if (!res.ok) { return; }
+      renderRecentComments(res.data || []);
+    }).catch(function () {
+      $('recentCommentLoading').classList.add('hidden');
+    });
+  }
+
+  function renderRecentComments(comments) {
+    var list = $('recentCommentList');
+    list.innerHTML = '';
+    if (!comments.length) { $('recentCommentEmpty').classList.remove('hidden'); return; }
+    $('recentCommentEmpty').classList.add('hidden');
+    comments.forEach(function (c) {
+      var course = courses.filter(function (co) { return co.id === c.courseId; })[0];
+      var item = document.createElement('div');
+      item.className = 'recent-comment-item';
+
+      var courseEl = document.createElement('div');
+      courseEl.className = 'recent-comment-course';
+      courseEl.textContent = (course && course.name) || '(講座名不明)';
+
+      var metaEl = document.createElement('div');
+      metaEl.className = 'recent-comment-meta';
+      metaEl.textContent = (c.authorName || c.authorEmail || '') + '　' + formatCommentTime(c.createdAt);
+
+      var bodyEl = document.createElement('div');
+      bodyEl.className = 'recent-comment-body';
+      bodyEl.textContent = c.body;
+
+      item.appendChild(courseEl);
+      item.appendChild(metaEl);
+      item.appendChild(bodyEl);
+      item.addEventListener('click', function () {
+        if (course) { openCourseProgress(course); }
+      });
+      list.appendChild(item);
+    });
   }
 
   /**
@@ -1109,13 +1253,51 @@
         due.className = 'payment-task-due due-normal';
       }
 
-      row.appendChild(body);
-      row.appendChild(due);
-      row.addEventListener('click', function () {
+      var main = document.createElement('div');
+      main.className = 'payment-task-main';
+      main.appendChild(body);
+      main.appendChild(due);
+      main.addEventListener('click', function () {
         // 編集モーダルではなく、確認・印刷用ページ(講師確認画面と同じもの)を開く
         window.open('invoice-lecturer.html?id=' + encodeURIComponent(inv.id), '_blank');
       });
+      row.appendChild(main);
+
+      var footer = document.createElement('div');
+      footer.className = 'payment-task-footer';
+      if (inv.status === '確定済み') {
+        var payBtn = document.createElement('button');
+        payBtn.type = 'button';
+        payBtn.className = 'btn btn-outline btn-small payment-task-pay-btn';
+        payBtn.textContent = '支払い済みにする';
+        payBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          markInvoicePaidFromDashboard(inv);
+        });
+        footer.appendChild(payBtn);
+      } else {
+        var hint = document.createElement('span');
+        hint.className = 'payment-task-meta';
+        hint.textContent = '講師確認待ちのため支払い操作はできません';
+        footer.appendChild(hint);
+      }
+      row.appendChild(footer);
       list.appendChild(row);
+    });
+  }
+
+  /** ダッシュボードの支払い待ちタスクから、直接「支払い済み」に変更する */
+  function markInvoicePaidFromDashboard(inv) {
+    if (!confirm('「' + (inv.topic || '') + '」を支払い済みにしますか？')) return;
+    callApi('markInvoicePaid', { id: inv.id }).then(function (res) {
+      if (!res.ok) { showToast('更新に失敗しました：' + res.error); return; }
+      showToast('支払い済みにしました');
+      return callApi('listInvoices');
+    }).then(function (res) {
+      if (res && res.ok) {
+        invoicesCache = res.data || [];
+        renderPaymentTasks(invoicesCache);
+      }
     });
   }
 
@@ -1539,7 +1721,63 @@
     renderFormSheetLink(course.formSheetUrl || '');
     $('ppFormSummary').innerHTML = '';
     if (course.formSheetUrl) { refreshFormSummary(); }
+    $('pp-commentInput').value = '';
+    renderPrepComments(course.id);
     $('prepProgressModal').classList.remove('hidden');
+  }
+
+  function formatCommentTime(s) {
+    if (!s) return '';
+    var parts = String(s).split(' ');
+    return parts.length === 2 ? (jpDate(parts[0]) + ' ' + parts[1]) : s;
+  }
+
+  /** 講座進捗モーダルのコメント一覧を読み込んで表示する */
+  function renderPrepComments(courseId) {
+    var list = $('ppCommentList');
+    list.innerHTML = '';
+    $('ppCommentEmpty').classList.add('hidden');
+    callApi('listComments', { courseId: courseId }).then(function (res) {
+      if (!res.ok) { return; }
+      var comments = res.data || [];
+      if (!comments.length) { $('ppCommentEmpty').classList.remove('hidden'); return; }
+      comments.forEach(function (c) {
+        var item = document.createElement('div');
+        item.className = 'pp-comment-item';
+        var head = document.createElement('div');
+        head.className = 'pp-comment-item-head';
+        var author = document.createElement('span');
+        author.textContent = c.authorName || c.authorEmail || '';
+        var when = document.createElement('span');
+        when.textContent = formatCommentTime(c.createdAt);
+        head.appendChild(author);
+        head.appendChild(when);
+        var body = document.createElement('div');
+        body.className = 'pp-comment-item-body';
+        body.textContent = c.body;
+        item.appendChild(head);
+        item.appendChild(body);
+        list.appendChild(item);
+      });
+    });
+  }
+
+  /** 講座進捗モーダルから新しいコメントを投稿する */
+  function postPrepComment() {
+    if (!activeCourse) return;
+    var input = $('pp-commentInput');
+    var body = input.value.trim();
+    if (!body) { showToast('コメントを入力してください'); return; }
+    var btn = $('btnPpCommentAdd');
+    btn.disabled = true;
+    callApi('addComment', { courseId: activeCourse.id, body: body }).then(function (res) {
+      if (!res.ok) { showToast('投稿に失敗しました：' + res.error); return; }
+      input.value = '';
+      renderPrepComments(activeCourse.id);
+      loadRecentComments();
+    }).finally(function () {
+      btn.disabled = false;
+    });
   }
 
   function closeCourseProgress() {
@@ -2197,6 +2435,8 @@
     $('btnPpPrompt').addEventListener('click', function () { closeCourseProgress(); openWpModal(activeCourse); });
     $('btnPpDelete').addEventListener('click', deleteCourseFromProgress);
     $('btnPpCancel').addEventListener('click', closeCourseProgress);
+    $('btnPpCloseX').addEventListener('click', closeCourseProgress);
+    $('btnPpCommentAdd').addEventListener('click', postPrepComment);
     $('btnPpSave').addEventListener('click', savePrepProgress);
     $('pp-materialFile').addEventListener('change', uploadLecturerMaterial_);
     $('btnPpMaterialDelete').addEventListener('click', deleteLecturerMaterial_);

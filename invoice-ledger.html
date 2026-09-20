@@ -122,6 +122,8 @@
   table.list-table th { background: var(--gw-bg); color: var(--gw-text); font-weight: 500; font-size: calc(var(--fs-scale, 1) * 12px); }
   table.list-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
   .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .invoice-actions-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px; }
+  .invoice-actions-list .btn { width: 100%; text-align: center; }
 
   .status-badge { display: inline-block; font-size: calc(var(--fs-scale, 1) * 11px); font-weight: 500; padding: 3px 10px; border-radius: 999px; }
   .status-作成済み { background: var(--gw-blue-tint); color: var(--gw-blue-dark); }
@@ -162,11 +164,12 @@
   .full-span { grid-column: 1 / -1; }
   .field label { font-size: calc(var(--fs-scale, 1) * 12px); font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 4px; }
 
-  input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea {
     width: 100%; font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13px);
     padding: 9px 12px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface); color: var(--gw-text);
   }
-  input:focus, select:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
+  textarea { resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
 
   .radio-group { display: flex; gap: 16px; align-items: center; font-size: calc(var(--fs-scale, 1) * 13px); flex-wrap: wrap; }
   .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; }
@@ -383,6 +386,12 @@
       <label class="checkbox-item"><input type="checkbox" id="eq-screen"> スクリーン</label>
     </div>
 
+    <div class="modal-section-title">④ 登壇者様へのメッセージ（任意）</div>
+    <div class="field">
+      <label for="f-directorMessage">請書兼請求書に記載され、登壇者様の画面に表示されます</label>
+      <textarea id="f-directorMessage" rows="4" placeholder="例）当日はよろしくお願いいたします。会場には10分前にお越しください。"></textarea>
+    </div>
+
     <div id="linkResult" class="link-result hidden">
       作成しました。以下のリンクを講師の方に送付してください（Googleログインは不要です）。
       <div class="link-row">
@@ -394,6 +403,18 @@
     <div class="modal-actions">
       <button type="button" class="btn btn-cancel" id="btnInvoiceCancel">閉じる</button>
       <button type="button" class="btn btn-primary" id="btnInvoiceSave">保存してリンクを発行</button>
+    </div>
+  </div>
+</div>
+
+<!-- 一覧の各行の「その他の操作」をまとめて表示するモーダル -->
+<div id="invoiceActionsModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 400px;">
+    <div class="modal-kicker">操作メニュー</div>
+    <div class="modal-title" id="iaModalTitle">講演テーマ</div>
+    <div id="invoiceActionsList" class="invoice-actions-list"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnInvoiceActionsClose">閉じる</button>
     </div>
   </div>
 </div>
@@ -916,47 +937,81 @@
       });
       actionsWrap.appendChild(btnView);
 
-      var btnCopy = document.createElement('button');
-      btnCopy.type = 'button';
-      btnCopy.className = 'btn btn-outline';
-      btnCopy.textContent = '講師用リンクをコピー';
-      btnCopy.addEventListener('click', function () {
-        copyText(lecturerLinkFor(inv.id), '講師用リンクをコピーしました');
-      });
-      actionsWrap.appendChild(btnCopy);
-
-      if (inv.status !== '取消') {
-        var btnEdit = document.createElement('button');
-        btnEdit.type = 'button';
-        btnEdit.className = 'btn btn-outline';
-        btnEdit.textContent = '編集';
-        btnEdit.addEventListener('click', function () { openInvoiceModal(inv); });
-        actionsWrap.appendChild(btnEdit);
-      }
-
-      if (inv.status === '確定済み') {
-        var btnPaid = document.createElement('button');
-        btnPaid.type = 'button';
-        btnPaid.className = 'btn btn-outline';
-        btnPaid.textContent = '支払い済みにする';
-        btnPaid.addEventListener('click', function () { markPaid(inv); });
-        actionsWrap.appendChild(btnPaid);
-      }
-
-      if (inv.status !== '取消') {
-        var btnVoid = document.createElement('button');
-        btnVoid.type = 'button';
-        btnVoid.className = 'btn btn-cancel';
-        btnVoid.textContent = '取消';
-        btnVoid.addEventListener('click', function () { voidInv(inv); });
-        actionsWrap.appendChild(btnVoid);
-      }
+      var btnMore = document.createElement('button');
+      btnMore.type = 'button';
+      btnMore.className = 'btn btn-outline';
+      btnMore.textContent = 'その他の操作';
+      btnMore.addEventListener('click', function () { openInvoiceActionsModal(inv); });
+      actionsWrap.appendChild(btnMore);
 
       tdActions.appendChild(actionsWrap);
       tr.appendChild(tdActions);
 
       tbody.appendChild(tr);
     });
+  }
+
+  /* ---------- 行の「その他の操作」モーダル ---------- */
+  var invoiceActionsTarget = null;
+
+  function openInvoiceActionsModal(inv) {
+    invoiceActionsTarget = inv;
+    $('iaModalTitle').textContent = inv.topic || '(講演テーマ未設定)';
+    var list = $('invoiceActionsList');
+    list.innerHTML = '';
+
+    var btnCopy = document.createElement('button');
+    btnCopy.type = 'button';
+    btnCopy.className = 'btn btn-outline';
+    btnCopy.textContent = '講師用リンクをコピー';
+    btnCopy.addEventListener('click', function () {
+      copyText(lecturerLinkFor(inv.id), '講師用リンクをコピーしました');
+      closeInvoiceActionsModal();
+    });
+    list.appendChild(btnCopy);
+
+    if (inv.status !== '取消') {
+      var btnEdit = document.createElement('button');
+      btnEdit.type = 'button';
+      btnEdit.className = 'btn btn-outline';
+      btnEdit.textContent = '編集';
+      btnEdit.addEventListener('click', function () {
+        closeInvoiceActionsModal();
+        openInvoiceModal(inv);
+      });
+      list.appendChild(btnEdit);
+    }
+
+    if (inv.status === '確定済み') {
+      var btnPaid = document.createElement('button');
+      btnPaid.type = 'button';
+      btnPaid.className = 'btn btn-outline';
+      btnPaid.textContent = '支払い済みにする';
+      btnPaid.addEventListener('click', function () {
+        closeInvoiceActionsModal();
+        markPaid(inv);
+      });
+      list.appendChild(btnPaid);
+    }
+
+    if (inv.status !== '取消') {
+      var btnVoid = document.createElement('button');
+      btnVoid.type = 'button';
+      btnVoid.className = 'btn btn-cancel';
+      btnVoid.textContent = '取消';
+      btnVoid.addEventListener('click', function () {
+        closeInvoiceActionsModal();
+        voidInv(inv);
+      });
+      list.appendChild(btnVoid);
+    }
+
+    $('invoiceActionsModal').classList.remove('hidden');
+  }
+
+  function closeInvoiceActionsModal() {
+    $('invoiceActionsModal').classList.add('hidden');
+    invoiceActionsTarget = null;
   }
 
   /* ---------- 新規作成／編集モーダル ---------- */
@@ -979,6 +1034,7 @@
     $('f-paymentDueDate').value = inv ? (inv.paymentDueDate || '') : '';
     var eq = (inv && inv.equipment) || {};
     ['projector', 'pc', 'mic', 'whiteboard', 'greenroom', 'screen'].forEach(function (k) { $('eq-' + k).checked = !!eq[k]; });
+    $('f-directorMessage').value = inv ? (inv.directorMessage || '') : '';
     updateModalCalc();
     $('linkResult').classList.add('hidden');
     $('btnInvoiceSave').disabled = false;
@@ -1018,7 +1074,8 @@
         whiteboard: $('eq-whiteboard').checked,
         greenroom: $('eq-greenroom').checked,
         screen: $('eq-screen').checked
-      }
+      },
+      directorMessage: $('f-directorMessage').value
     };
     if (!payload.topic) { showToast('講演テーマを入力してください'); return; }
 
@@ -1119,6 +1176,10 @@
     });
     $('invoiceModal').addEventListener('click', function (e) {
       if (e.target.id === 'invoiceModal') closeModal();
+    });
+    $('btnInvoiceActionsClose').addEventListener('click', closeInvoiceActionsModal);
+    $('invoiceActionsModal').addEventListener('click', function (e) {
+      if (e.target.id === 'invoiceActionsModal') closeInvoiceActionsModal();
     });
   });
 })();
