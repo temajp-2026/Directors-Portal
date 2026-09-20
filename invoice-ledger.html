@@ -187,6 +187,11 @@
     <div class="login-title">請求書管理簿</div>
     <p class="login-sub">特定非営利活動法人　日本繊維商品めんてなんす研究会<br>Googleアカウントでログインしてください。<br>あらかじめ登録された理事のみ利用できます。</p>
     <div id="gsiButton" style="display:flex; justify-content:center;"></div>
+    <div id="gsiLoadError" class="login-error">
+      Googleのログインボタンを読み込めませんでした。通信環境をご確認のうえ、ページを再読み込みしてください。<br>
+      LINEやGmailアプリなどのアプリ内ブラウザで開いている場合は、右上のメニューから「ブラウザで開く」を選び、Chromeなど通常のブラウザで開き直してください。
+      <div style="margin-top:10px;"><button type="button" class="btn btn-outline" id="btnGsiReload">ページを再読み込み</button></div>
+    </div>
     <div id="loginError" class="login-error"></div>
   </div>
 </div>
@@ -994,6 +999,16 @@
         google.accounts.id.renderButton($('gsiButton'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja' });
       }
     }, 200);
+    // Googleのサインインスクリプトが一定時間たっても読み込めない場合(通信環境の問題や、
+    // LINE・Gmailアプリ内ブラウザ等でブロックされている場合など)、ボタンが出ないまま
+    // 何も起きないように見えてしまうため、はっきりエラーを表示する。
+    setTimeout(function () {
+      if (!(window.google && google.accounts && google.accounts.id)) {
+        clearInterval(initTimer);
+        $('gsiLoadError').style.display = 'block';
+      }
+    }, 8000);
+    $('btnGsiReload').addEventListener('click', function () { window.location.reload(); });
 
     $('btnLogout').addEventListener('click', logout);
     $('btnDeniedLogout').addEventListener('click', logout);
