@@ -583,19 +583,35 @@
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     renderList();
-    loadMasterData();
-    openInvoiceFromQueryParam();
+    // ?newForCourse=<講座ID> は講座一覧(courses)とプルダウン(f-course)の読み込み完了後でないと
+    // 該当講座を正しく選択できないため、loadMasterData()の完了を待ってから実行する。
+    loadMasterData().then(openInvoiceFromQueryParam);
   }
 
-  /** ダッシュボード等から ?open=<請求書ID> でリンクされた場合、該当の請求書を自動で開く(初回のみ) */
+  /**
+   * ダッシュボード等から以下のクエリパラメータでリンクされた場合、該当の操作を自動で行う(初回のみ)。
+   * ・?open=<請求書ID>         … 該当の請求書を編集モーダルで開く
+   * ・?newForCourse=<講座ID>   … 指定した講座の内容を自動入力した状態で、新規作成モーダルを開く
+   *                              (講座一覧の「準備進捗」画面の「請求書を作成する」ボタンから遷移)
+   */
   function openInvoiceFromQueryParam() {
     if (queryOpenHandled) return;
     queryOpenHandled = true;
     var params = new URLSearchParams(window.location.search);
     var openId = params.get('open');
-    if (!openId) return;
-    var inv = invoices.filter(function (i) { return i.id === openId; })[0];
-    if (inv) { openInvoiceModal(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
+    if (openId) {
+      var inv = invoices.filter(function (i) { return i.id === openId; })[0];
+      if (inv) { openInvoiceModal(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
+      return;
+    }
+    var newForCourseId = params.get('newForCourse');
+    if (newForCourseId) {
+      var c = courses.filter(function (x) { return x.id === newForCourseId; })[0];
+      if (!c) { showToast('指定された講座が見つかりませんでした'); return; }
+      openInvoiceModal(null);
+      $('f-course').value = c.id;
+      onCourseSelected();
+    }
   }
 
   function handleCredentialResponse(response) {

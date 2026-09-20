@@ -270,6 +270,11 @@
   .checkbox-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
   .checkbox-item input { width: auto; }
 
+  .ov-meta { font-size: 13px; color: var(--gw-text-secondary); line-height: 2; margin-bottom: 14px; }
+  .ov-meta .status-badge { margin-top: 6px; }
+  .ov-actions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-bottom: 18px; }
+  .ov-actions .btn { width: 100%; }
+
   .pdf-field { border-top: 1px solid var(--gw-border); padding-top: 14px; margin-top: 4px; }
   .pdf-none { font-size: 12px; color: var(--gw-text-secondary); margin-bottom: 8px; }
   .pdf-current { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
@@ -443,16 +448,44 @@
       <label for="c-status">ステータス</label>
       <select id="c-status"></select>
     </div>
-    <div class="field">
-      <label>準備状況</label>
-      <div class="checkbox-grid">
-        <label class="checkbox-item"><input type="checkbox" id="c-lecturerMeetingDone"> 講師打ち合わせ済み</label>
-        <label class="checkbox-item"><input type="checkbox" id="c-prepMaterialsDone"> 講座準備資料作成済み</label>
-      </div>
-    </div>
 
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnCourseCancel">キャンセル</button>
+      <button type="button" class="btn btn-primary" id="btnCourseSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 開催概要モーダル -->
+<div id="courseOverviewModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 480px;">
+    <div class="modal-title" id="ovTitle">講座名</div>
+    <div class="ov-meta">
+      <div>開催日時：<span id="ovDateTime"></span></div>
+      <div>開催場所：<span id="ovVenue"></span></div>
+      <div>担当理事：<span id="ovDirector"></span><span id="ovDeptWrap">（<span id="ovDept"></span>）</span></div>
+      <div>研修形式：<span id="ovFormat"></span></div>
+      <span class="status-badge" id="ovStatusBadge"></span>
+    </div>
+    <div class="ov-actions">
+      <button type="button" class="btn btn-outline" id="btnOvPrep">準備進捗</button>
+      <button type="button" class="btn btn-outline" id="btnOvEdit">講座編集</button>
+      <button type="button" class="btn btn-outline" id="btnOvPdf">PDF機能</button>
+      <button type="button" class="btn btn-outline" id="btnOvPrompt">プロンプト書き出し</button>
+    </div>
+    <div class="modal-actions modal-actions-split">
+      <button type="button" class="btn btn-cancel" id="btnOvDelete">この講座を削除</button>
+      <div style="flex:1;"></div>
+      <button type="button" class="btn btn-cancel" id="btnOvClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 講座案内PDF管理モーダル -->
+<div id="coursePdfModal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <div class="modal-title">講座案内PDF</div>
     <div class="field pdf-field" id="pdfFieldWrap">
-      <label>講座案内PDF</label>
       <div id="pdfNoFile" class="pdf-none hidden">まだPDFが添付されていません。</div>
       <div id="pdfCurrent" class="pdf-current hidden">
         <img id="pdfThumb" class="pdf-thumb" alt="PDFサムネイル">
@@ -466,15 +499,55 @@
       </div>
       <input type="file" id="c-pdfFile" accept="application/pdf" style="margin-top:8px;">
       <div id="pdfUploadStatus" class="pdf-upload-status hidden"></div>
-      <div class="field-note">この講座は「＋新しい講座を追加」で先に保存してから、PDFを添付できます。</div>
-      <button type="button" class="btn btn-outline" id="btnOpenWp" style="display:none;">ワードプレス用の案内文HTMLを作成</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnPdfModalClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 準備進捗モーダル -->
+<div id="prepProgressModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 640px;">
+    <div class="modal-title">準備進捗｜<span id="ppCourseName"></span></div>
+
+    <div class="field">
+      <label>① 講師打ち合わせ</label>
+      <label class="checkbox-item"><input type="checkbox" id="pp-meetingDone"> 打ち合わせ済み</label>
+      <textarea id="pp-meetingNote" rows="3" placeholder="打ち合わせメモ（日時・内容・確認事項など）" style="margin-top:8px;"></textarea>
     </div>
 
-    <div class="modal-actions modal-actions-split">
-      <button type="button" class="btn btn-cancel" id="btnCourseDelete" style="display:none;">この講座を削除</button>
-      <div style="flex:1;"></div>
-      <button type="button" class="btn btn-cancel" id="btnCourseCancel">キャンセル</button>
-      <button type="button" class="btn btn-primary" id="btnCourseSave">保存</button>
+    <div class="field">
+      <label>② 請書兼請求書</label>
+      <div id="ppInvoiceSummary" class="ov-meta" style="margin-bottom:8px;"></div>
+      <div id="ppInvoiceActions"></div>
+    </div>
+
+    <div class="field">
+      <label>③ 講座準備（必要備品チェック）</label>
+      <div id="ppChecklist" class="checkbox-grid" style="grid-template-columns:1fr 1fr;"></div>
+      <div class="field-note">項目はスプレッドシートの「PulldownOptions」シートに「講座準備チェック項目」の区分で追加・編集できます。</div>
+    </div>
+
+    <div class="field">
+      <label>④ 講師資料PDF</label>
+      <div id="ppMaterialNone" class="pdf-none hidden">まだアップロードされていません。</div>
+      <div id="ppMaterialCurrent" class="pdf-current hidden">
+        <div class="pdf-current-info">
+          <div id="ppMaterialFileName" class="pdf-filename"></div>
+          <div class="pdf-current-actions">
+            <a id="ppMaterialDownloadLink" class="btn btn-outline" href="#" target="_blank" rel="noopener">開く／ダウンロード</a>
+            <button type="button" class="btn btn-cancel" id="btnPpMaterialDelete">削除</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="pp-materialFile" accept="application/pdf" style="margin-top:8px;">
+      <div id="ppMaterialUploadStatus" class="pdf-upload-status hidden"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnPpCancel">閉じる</button>
+      <button type="button" class="btn btn-primary" id="btnPpSave">保存</button>
     </div>
   </div>
 </div>
@@ -487,11 +560,14 @@
       講座の案内PDFを見ながら、以下の項目を入力してください。入力内容から、そのままワードプレスに貼り付けられるHTMLを生成します。
     </div>
     <div class="field" style="margin-bottom:14px;">
-      <button type="button" class="btn btn-outline" id="btnWpOcr">📄 PDFから自動入力</button>
-      <div class="field-note" style="margin:6px 0 0;">添付された案内PDFを読み取り、日時・定員・場所・参加費などを自動入力します（精度は完全ではないため、入力後は必ず内容をご確認ください）。</div>
-      <div id="wpOcrRawWrap" class="hidden" style="margin-top:8px;">
-        <label>PDFから読み取った全文（参考用）</label>
-        <textarea id="wpOcrRawText" rows="5" readonly style="font-size:11px;"></textarea>
+      <label for="wpPasteText">PDFの内容を貼り付けて自動入力</label>
+      <div class="field-note" style="margin:0 0 6px;">
+        案内PDFをGemini等のAIに読み込ませて下記の内容を書き出してもらい、その結果をここに貼り付けてから「貼り付けた内容から自動入力」を押すと、空欄の項目に自動で反映されます（入力後は必ず内容をご確認ください）。
+      </div>
+      <textarea id="wpPasteText" rows="6" placeholder="例）&#10;日時：2026年10月8日（木）14:00～16:00&#10;会場：株式会社内田染工場&#10;住所：東京都文京区白山3-5-2&#10;定員：15名（抽選）&#10;申込方法：お申込フォームより&#10;スキルアップメンバー：無料&#10;・実際の染色工程の見学&#10;・素材×染色による仕上がりの違い"></textarea>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" id="btnWpPasteFill">貼り付けた内容から自動入力</button>
+        <button type="button" class="btn btn-outline" id="btnWpCopyPrompt">AIに渡すプロンプト例をコピー</button>
       </div>
     </div>
 
@@ -566,7 +642,7 @@
   var departments = [];
   var pulldownOptions = {};
   var editingCoursePdf = null; // { pdfFileId, pdfFileName, pdfUrl, pdfThumbnailUrl } | null
-  var wpContextCourse = null;
+  var activeCourse = null; // 開催概要/準備進捗/PDF機能で対象としている講座
   var invoicesCache = [];
   var appSettings = { createAlertDays: 40, unrespondedAlertDays: 14, paymentWarningDays: 2 };
   var VENUE_HALL_2F = '白王ビル２Fホール';
@@ -1058,14 +1134,59 @@
       var badge = card.querySelector('.status-badge');
       badge.textContent = c.status || '準備中';
       badge.className = 'status-badge status-' + (c.status || '準備中');
-      card.addEventListener('click', function () { openCourseModal(c); });
+      card.addEventListener('click', function () { openCourseOverview(c); });
       grid.appendChild(card);
     });
   }
 
+  /* ---------- 開催概要 ---------- */
+  function openCourseOverview(course) {
+    activeCourse = course;
+    $('ovTitle').textContent = course.name || '(名称未設定)';
+    $('ovDateTime').textContent = course.eventDate
+      ? (jpDate(course.eventDate, true) + ((course.startTime || course.endTime) ? '　' + jpTimeRange(course.startTime, course.endTime) : ''))
+      : '未定';
+    $('ovVenue').textContent = course.venue || '未定';
+    $('ovDirector').textContent = course.directorName || '未定';
+    $('ovDeptWrap').classList.toggle('hidden', !course.department);
+    if (course.department) { $('ovDept').textContent = course.department; }
+    $('ovFormat').textContent = course.format || '';
+    var badge = $('ovStatusBadge');
+    badge.textContent = course.status || '準備中';
+    badge.className = 'status-badge status-' + (course.status || '準備中');
+    $('courseOverviewModal').classList.remove('hidden');
+  }
+
+  function closeCourseOverview() {
+    $('courseOverviewModal').classList.add('hidden');
+  }
+
+  function deleteCourseFromOverview() {
+    if (!activeCourse) return;
+    if (!confirm('この講座を削除しますか？この操作は取り消せません。')) return;
+    var btn = $('btnOvDelete');
+    btn.disabled = true;
+    callApi('deleteCourse', { id: activeCourse.id }).then(function (res) {
+      if (!res.ok) {
+        var msg = res.error === 'course_has_invoice'
+          ? 'この講座には請求書が紐付いているため削除できません。先に請求書を取消してください。'
+          : '削除に失敗しました：' + res.error;
+        showToast(msg);
+        return;
+      }
+      closeCourseOverview();
+      showToast('講座を削除しました');
+      return callApi('listCourses');
+    }).then(function (res) {
+      if (res && res.ok) { courses = res.data; renderCourses(); loadDashboardInvoiceData(); }
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  /* ---------- 講座編集(核となる項目のみ) ---------- */
   function openCourseModal(course) {
     editingCourseId = course ? course.id : null;
-    wpContextCourse = course;
     $('courseModalTitle').textContent = course ? '講座を編集' : '新しい講座を追加';
     $('c-name').value = course ? course.name : '';
     $('c-eventDate').value = course ? course.eventDate : '';
@@ -1076,25 +1197,28 @@
     $('c-department').value = course ? (course.department || '') : '';
     $('c-format').value = course ? (course.format || '座学') : '座学';
     $('c-status').value = course ? course.status : '準備中';
-    $('c-lecturerMeetingDone').checked = !!(course && course.lecturerMeetingDone);
-    $('c-prepMaterialsDone').checked = !!(course && course.prepMaterialsDone);
+    $('courseModal').classList.remove('hidden');
+  }
 
+  function closeCourseModal() {
+    $('courseModal').classList.add('hidden');
+  }
+
+  /* ---------- 講座案内PDF管理 ---------- */
+  function openCoursePdfModal(course) {
+    activeCourse = course;
+    editingCourseId = course.id;
     $('c-pdfFile').value = '';
     $('pdfUploadStatus').classList.add('hidden');
     editingCoursePdf = course && course.pdfFileId ? {
       pdfFileId: course.pdfFileId, pdfFileName: course.pdfFileName, pdfUrl: course.pdfUrl, pdfThumbnailUrl: course.pdfThumbnailUrl
     } : null;
     renderPdfSection();
-    $('pdfFieldWrap').querySelector('.field-note').classList.toggle('hidden', !!editingCourseId);
-    $('c-pdfFile').disabled = !editingCourseId;
-    $('btnOpenWp').style.display = editingCourseId ? '' : 'none';
-    $('btnCourseDelete').style.display = editingCourseId ? '' : 'none';
-
-    $('courseModal').classList.remove('hidden');
+    $('coursePdfModal').classList.remove('hidden');
   }
 
-  function closeCourseModal() {
-    $('courseModal').classList.add('hidden');
+  function closeCoursePdfModal() {
+    $('coursePdfModal').classList.add('hidden');
   }
 
   function renderPdfSection() {
@@ -1157,26 +1281,173 @@
     });
   }
 
-  function deleteCurrentCourse() {
-    if (!editingCourseId) return;
-    if (!confirm('この講座を削除しますか？この操作は取り消せません。')) return;
-    var btn = $('btnCourseDelete');
-    btn.disabled = true;
-    callApi('deleteCourse', { id: editingCourseId }).then(function (res) {
-      if (!res.ok) {
-        var msg = res.error === 'course_has_invoice'
-          ? 'この講座には請求書が紐付いているため削除できません。先に請求書を取消してください。'
-          : '削除に失敗しました：' + res.error;
-        showToast(msg);
-        return;
-      }
-      closeCourseModal();
-      showToast('講座を削除しました');
+  /* ---------- 準備進捗 ---------- */
+  function openPrepProgressModal(course) {
+    activeCourse = course;
+    $('ppCourseName').textContent = course.name || '(名称未設定)';
+    $('pp-meetingDone').checked = !!course.lecturerMeetingDone;
+    $('pp-meetingNote').value = course.lecturerMeetingNote || '';
+    renderPrepInvoiceSummary(course);
+    renderPrepChecklistForm(course);
+    renderPrepMaterialSection(course);
+    $('prepProgressModal').classList.remove('hidden');
+  }
+
+  function closePrepProgressModal() {
+    $('prepProgressModal').classList.add('hidden');
+  }
+
+  function renderPrepInvoiceSummary(course) {
+    var wrap = $('ppInvoiceSummary');
+    var actionsWrap = $('ppInvoiceActions');
+    wrap.innerHTML = '';
+    actionsWrap.innerHTML = '';
+    var inv = findLinkedInvoiceForCourse(course.id);
+    if (!inv) {
+      wrap.textContent = 'まだ請書兼請求書が作成されていません。';
+      var createBtn = document.createElement('button');
+      createBtn.type = 'button';
+      createBtn.className = 'btn btn-outline';
+      createBtn.textContent = '請求書を作成する';
+      createBtn.addEventListener('click', function () {
+        window.open('invoice-ledger.html?newForCourse=' + encodeURIComponent(course.id), '_blank');
+      });
+      actionsWrap.appendChild(createBtn);
+      return;
+    }
+    var total = (Number(inv.feeExTax) || 0) + (Number(inv.travelFee) || 0) + (Number(inv.lodgingFee) || 0);
+    var lines = [
+      'ステータス：' + inv.status,
+      '講師：' + (inv.lecturerName || '(未確定)'),
+      '金額：¥' + total.toLocaleString(),
+      '支払予定日：' + (inv.paymentDueDate ? jpDate(inv.paymentDueDate) : '未設定')
+    ];
+    wrap.innerHTML = lines.map(function (l) { return '<div>' + escapeHtml(l) + '</div>'; }).join('');
+    var openBtn = document.createElement('a');
+    openBtn.className = 'btn btn-outline';
+    openBtn.textContent = '請求書を開く';
+    openBtn.href = 'invoice-ledger.html?open=' + encodeURIComponent(inv.id);
+    openBtn.target = '_blank';
+    openBtn.rel = 'noopener';
+    actionsWrap.appendChild(openBtn);
+  }
+
+  function renderPrepChecklistForm(course) {
+    var wrap = $('ppChecklist');
+    wrap.innerHTML = '';
+    var items = pulldownOptions['講座準備チェック項目'] || [];
+    var state = {};
+    try { state = JSON.parse(course.prepChecklistJson || '{}'); } catch (e) { state = {}; }
+    if (!items.length) {
+      wrap.innerHTML = '<div class="dash-empty">チェック項目が未設定です。スプレッドシートの「PulldownOptions」シートに「講座準備チェック項目」の区分で追加してください。</div>';
+      return;
+    }
+    items.forEach(function (item) {
+      var label = document.createElement('label');
+      label.className = 'checkbox-item';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = item;
+      cb.checked = !!state[item];
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(item));
+      wrap.appendChild(label);
+    });
+  }
+
+  function renderPrepMaterialSection(course) {
+    var has = !!course.lecturerMaterialFileId;
+    $('ppMaterialNone').classList.toggle('hidden', has);
+    $('ppMaterialCurrent').classList.toggle('hidden', !has);
+    if (has) {
+      $('ppMaterialFileName').textContent = course.lecturerMaterialFileName || '';
+      $('ppMaterialDownloadLink').href = course.lecturerMaterialUrl || '#';
+    }
+    $('pp-materialFile').value = '';
+    $('ppMaterialUploadStatus').classList.add('hidden');
+  }
+
+  function uploadLecturerMaterial_() {
+    var fileInput = $('pp-materialFile');
+    var file = fileInput.files && fileInput.files[0];
+    if (!file || !activeCourse) return;
+    if (file.size > 15 * 1024 * 1024) { showToast('PDFのサイズが大きすぎます（15MBまで）'); fileInput.value = ''; return; }
+
+    var statusEl = $('ppMaterialUploadStatus');
+    statusEl.textContent = 'アップロード中…';
+    statusEl.classList.remove('hidden');
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      callApi('uploadLecturerMaterial', {
+        courseId: activeCourse.id, fileName: file.name, mimeType: file.type || 'application/pdf', base64Data: base64
+      }).then(function (res) {
+        if (!res.ok) { showToast('アップロードに失敗しました：' + res.error); statusEl.classList.add('hidden'); return; }
+        showToast('講師資料PDFをアップロードしました');
+        return callApi('listCourses');
+      }).then(function (res) {
+        if (res && res.ok) {
+          courses = res.data;
+          renderCourses();
+          activeCourse = courses.filter(function (c) { return c.id === activeCourse.id; })[0] || activeCourse;
+          renderPrepMaterialSection(activeCourse);
+        }
+      }).catch(function () {
+        showToast('アップロードに失敗しました');
+      }).finally(function () {
+        statusEl.classList.add('hidden');
+      });
+    };
+    reader.onerror = function () { showToast('ファイルの読み込みに失敗しました'); statusEl.classList.add('hidden'); };
+    reader.readAsDataURL(file);
+  }
+
+  function deleteLecturerMaterial_() {
+    if (!activeCourse || !activeCourse.lecturerMaterialFileId) return;
+    if (!confirm('講師資料PDFを削除しますか？')) return;
+    callApi('deleteLecturerMaterial', { courseId: activeCourse.id }).then(function (res) {
+      if (!res.ok) { showToast('削除に失敗しました：' + res.error); return; }
+      showToast('削除しました');
       return callApi('listCourses');
     }).then(function (res) {
-      if (res && res.ok) { courses = res.data; renderCourses(); loadDashboardInvoiceData(); }
+      if (res && res.ok) {
+        courses = res.data;
+        renderCourses();
+        activeCourse = courses.filter(function (c) { return c.id === activeCourse.id; })[0] || activeCourse;
+        renderPrepMaterialSection(activeCourse);
+      }
+    });
+  }
+
+  function savePrepProgress() {
+    if (!activeCourse) return;
+    var checklist = {};
+    Array.prototype.forEach.call($('ppChecklist').querySelectorAll('input[type=checkbox]'), function (cb) {
+      checklist[cb.value] = cb.checked;
+    });
+    var items = Object.keys(checklist);
+    var doneCount = items.filter(function (k) { return checklist[k]; }).length;
+    var payload = {
+      id: activeCourse.id,
+      lecturerMeetingDone: $('pp-meetingDone').checked,
+      lecturerMeetingNote: $('pp-meetingNote').value,
+      prepChecklistJson: JSON.stringify(checklist),
+      prepMaterialsDone: items.length > 0 && doneCount === items.length
+    };
+    var btn = $('btnPpSave');
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    callApi('updatePrepProgress', payload).then(function (res) {
+      if (!res.ok) { showToast('保存に失敗しました：' + res.error); return; }
+      closePrepProgressModal();
+      showToast('保存しました');
+      return callApi('listCourses');
+    }).then(function (res) {
+      if (res && res.ok) { courses = res.data; renderCourses(); renderPrepChecklist(invoicesCache); }
     }).finally(function () {
       btn.disabled = false;
+      btn.textContent = '保存';
     });
   }
 
@@ -1192,12 +1463,10 @@
   }
 
   function openWpModal(course) {
-    wpContextCourse = course;
     prefillWpModal(course);
     $('wpResult').classList.add('hidden');
     $('wpResultHtml').value = '';
-    $('wpOcrRawWrap').classList.add('hidden');
-    $('wpOcrRawText').value = '';
+    $('wpPasteText').value = '';
     $('wpModal').classList.remove('hidden');
   }
 
@@ -1426,41 +1695,29 @@
     }
   }
 
-  function ocrAndPrefillWp() {
-    if (!wpContextCourse || !wpContextCourse.id) return;
-    if (!editingCoursePdf || !editingCoursePdf.pdfFileId) { showToast('先に講座案内PDFを添付してください'); return; }
-    var btn = $('btnWpOcr');
-    btn.disabled = true;
-    btn.textContent = 'PDFを読み込み中…';
-    callApi('ocrCoursePdf', { courseId: wpContextCourse.id }).then(function (res) {
-      if (!res.ok) {
-        var errCode = String(res.error || '');
-        if (errCode === 'pdf_not_found') {
-          showToast('添付されたPDFが見つかりませんでした');
-        } else if (errCode.indexOf('ocr_failed') === 0) {
-          showToast('PDFの読み取りに失敗しました。下の詳細をご確認ください。');
-          $('wpOcrRawText').value = '【エラー詳細】\n' + errCode.replace(/^ocr_failed:?/, '')
-            + '\n\n※このエラー文言を担当者にお伝えいただくと、原因の切り分けがしやすくなります。'
-            + '\n多くの場合、Google Cloud Console側で「Google Drive API」が有効化されていないことが原因です。';
-          $('wpOcrRawWrap').classList.remove('hidden');
-        } else {
-          showToast('PDFの読み取りに失敗しました：' + errCode);
-        }
-        return;
-      }
-      var text = (res.data && res.data.text) || '';
-      if (!text.trim()) { showToast('PDFから文字を読み取れませんでした'); return; }
-      var fields = parseOcrTextToWpFields(text);
-      applyOcrFieldsToForm(fields);
-      $('wpOcrRawText').value = text;
-      $('wpOcrRawWrap').classList.remove('hidden');
-      showToast('PDFの内容を自動入力しました。内容をご確認ください。');
-    }).catch(function () {
-      showToast('PDFの読み取りに失敗しました');
-    }).finally(function () {
-      btn.disabled = false;
-      btn.textContent = '📄 PDFから自動入力';
-    });
+  /** Gemini等のAIに渡す、案内PDFの読み取り用プロンプト例 */
+  var WP_AI_PROMPT_TEMPLATE =
+    'この講座案内PDFの内容を読み取り、分かる項目だけを1行ずつ次の形式で書き出してください。' +
+    '該当する情報がない項目は省略してください。\n\n' +
+    '日時：（例：2026年10月8日（木）14:00～16:00）\n' +
+    '会場：（施設名）\n' +
+    '住所：（都道府県・市区町村から）\n' +
+    '定員：（例：15名）\n' +
+    '申込方法：（例：お申込フォームより）\n' +
+    '（参加費に区分があれば、1行ずつ「区分名：金額」の形式で。例：会員：無料）\n' +
+    '（見学・研修内容を「・」で始まる箇条書きで、1行に1項目）';
+
+  function handleWpCopyPrompt() {
+    copyText(WP_AI_PROMPT_TEMPLATE, 'プロンプト例をコピーしました。Geminiなどに案内PDFと一緒に貼り付けてご利用ください。');
+  }
+
+  /** 貼り付けたテキスト(Gemini等の出力を想定)から、空欄のフォーム項目にのみ自動入力する */
+  function handleWpPasteFill() {
+    var text = $('wpPasteText').value;
+    if (!text.trim()) { showToast('PDFの内容を貼り付けてから押してください'); return; }
+    var fields = parseOcrTextToWpFields(text);
+    applyOcrFieldsToForm(fields);
+    showToast('貼り付けた内容から自動入力しました。内容をご確認ください。');
   }
 
   function handleWpGenerate() {
@@ -1493,9 +1750,7 @@
       directorName: $('c-directorName').value,
       department: $('c-department').value,
       format: $('c-format').value,
-      status: $('c-status').value,
-      lecturerMeetingDone: $('c-lecturerMeetingDone').checked,
-      prepMaterialsDone: $('c-prepMaterialsDone').checked
+      status: $('c-status').value
     };
     if (!payload.name) { showToast('講座名を入力してください'); return; }
     var action = editingCourseId ? 'updateCourse' : 'createCourse';
@@ -1536,18 +1791,39 @@
     $('btnAddCourse').addEventListener('click', function () { openCourseModal(null); });
     $('btnCourseCancel').addEventListener('click', closeCourseModal);
     $('btnCourseSave').addEventListener('click', saveCourse);
-    $('btnCourseDelete').addEventListener('click', deleteCurrentCourse);
     $('c-venue').addEventListener('change', onVenueSelectChange);
     $('courseModal').addEventListener('click', function (e) {
       if (e.target.id === 'courseModal') closeCourseModal();
     });
 
+    $('btnOvPrep').addEventListener('click', function () { closeCourseOverview(); openPrepProgressModal(activeCourse); });
+    $('btnOvEdit').addEventListener('click', function () { closeCourseOverview(); openCourseModal(activeCourse); });
+    $('btnOvPdf').addEventListener('click', function () { closeCourseOverview(); openCoursePdfModal(activeCourse); });
+    $('btnOvPrompt').addEventListener('click', function () { closeCourseOverview(); openWpModal(activeCourse); });
+    $('btnOvDelete').addEventListener('click', deleteCourseFromOverview);
+    $('btnOvClose').addEventListener('click', closeCourseOverview);
+    $('courseOverviewModal').addEventListener('click', function (e) {
+      if (e.target.id === 'courseOverviewModal') closeCourseOverview();
+    });
+
     $('c-pdfFile').addEventListener('change', uploadSelectedPdf);
     $('btnPdfDelete').addEventListener('click', deleteCurrentPdf);
+    $('btnPdfModalClose').addEventListener('click', closeCoursePdfModal);
+    $('coursePdfModal').addEventListener('click', function (e) {
+      if (e.target.id === 'coursePdfModal') closeCoursePdfModal();
+    });
 
-    $('btnOpenWp').addEventListener('click', function () { openWpModal(wpContextCourse); });
+    $('btnPpCancel').addEventListener('click', closePrepProgressModal);
+    $('btnPpSave').addEventListener('click', savePrepProgress);
+    $('pp-materialFile').addEventListener('change', uploadLecturerMaterial_);
+    $('btnPpMaterialDelete').addEventListener('click', deleteLecturerMaterial_);
+    $('prepProgressModal').addEventListener('click', function (e) {
+      if (e.target.id === 'prepProgressModal') closePrepProgressModal();
+    });
+
     $('btnWpCancel').addEventListener('click', closeWpModal);
-    $('btnWpOcr').addEventListener('click', ocrAndPrefillWp);
+    $('btnWpPasteFill').addEventListener('click', handleWpPasteFill);
+    $('btnWpCopyPrompt').addEventListener('click', handleWpCopyPrompt);
     $('btnWpPreview').addEventListener('click', handleWpPreview);
     $('btnWpGenerate').addEventListener('click', handleWpGenerate);
     $('wpModal').addEventListener('click', function (e) {
