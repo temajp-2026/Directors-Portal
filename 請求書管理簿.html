@@ -224,7 +224,7 @@
         <tr>
           <th>講演テーマ</th>
           <th>担当理事</th>
-          <th>開催日</th>
+          <th>開催日時</th>
           <th>謝礼(税抜)</th>
           <th>ステータス</th>
           <th>最終更新</th>
@@ -256,7 +256,8 @@
       <div class="field"><label for="f-directorName">担当理事名</label><input type="text" id="f-directorName" placeholder="例）山田太郎"></div>
       <div class="field"><label for="f-startTime">開始時刻</label><input type="time" id="f-startTime"></div>
       <div class="field"><label for="f-endTime">終了時刻</label><input type="time" id="f-endTime"></div>
-      <div class="field full-span"><label for="f-venue">開催場所</label><input type="text" id="f-venue" placeholder="例）本部研修室"></div>
+      <div class="field"><label for="f-venue">開催場所</label><select id="f-venue"></select></div>
+      <div class="field hidden" id="f-venueOtherWrap"><label for="f-venueOther">開催場所（自由記入）</label><input type="text" id="f-venueOther" placeholder="例）〇〇市民センター 会議室A"></div>
       <div class="field full-span"><label for="f-topic">講演テーマ</label><input type="text" id="f-topic" placeholder="例）繊維製品の適切な取り扱いについて"></div>
       <div class="field">
         <label for="f-format">研修形式</label>
@@ -377,12 +378,53 @@
   function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP'); }
 
   var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-  function withWeekday(dateStr) {
+  /** "2026-09-20" → "2026年9月20日（日）" のような表示用の日付文字列に変換する */
+  function jpDate(dateStr, withWeekday) {
     if (!dateStr) return '';
     var parts = String(dateStr).split('-');
     if (parts.length !== 3) return dateStr;
+    var base = Number(parts[0]) + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+    if (!withWeekday) return base;
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    return dateStr + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+    return base + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+  }
+  /** "09:00" → "9時00分" のような表示用の時刻文字列に変換する */
+  function jpTime(hm) {
+    if (!hm) return '';
+    var parts = String(hm).split(':');
+    if (parts.length < 2) return hm;
+    return Number(parts[0]) + '時' + parts[1] + '分';
+  }
+  function jpTimeRange(start, end) {
+    if (!start && !end) return '';
+    if (start && end) return jpTime(start) + '～' + jpTime(end) + 'まで';
+    if (start) return jpTime(start) + '～';
+    return '～' + jpTime(end) + 'まで';
+  }
+
+  var VENUE_OTHER_LABEL = 'その他（自由記入）';
+  function venueOptions() {
+    return (pulldownOptions['開催場所'] && pulldownOptions['開催場所'].length)
+      ? pulldownOptions['開催場所']
+      : ['白王ビル２Fホール', '白王ビル３Fセミナールーム', VENUE_OTHER_LABEL];
+  }
+  function onVenueSelectChange() {
+    var isOther = $('f-venue').value === VENUE_OTHER_LABEL;
+    $('f-venueOtherWrap').classList.toggle('hidden', !isOther);
+  }
+  function applyVenueToForm(venue) {
+    var known = venueOptions().filter(function (v) { return v !== VENUE_OTHER_LABEL; });
+    if (venue && known.indexOf(venue) === -1) {
+      $('f-venue').value = VENUE_OTHER_LABEL;
+      $('f-venueOther').value = venue;
+    } else {
+      $('f-venue').value = venue || '';
+      $('f-venueOther').value = '';
+    }
+    onVenueSelectChange();
+  }
+  function resolveVenueFromForm() {
+    return $('f-venue').value === VENUE_OTHER_LABEL ? $('f-venueOther').value : $('f-venue').value;
   }
 
   function calcAmounts(fee, withholdingType) {
@@ -431,7 +473,9 @@
     courses.forEach(function (c) {
       var opt = document.createElement('option');
       opt.value = c.id;
-      opt.textContent = (c.eventDate ? withWeekday(c.eventDate) : '未定') + '　' + (c.name || '(名称未設定)');
+      var dateLabel = c.eventDate ? jpDate(c.eventDate, true) : '未定';
+      var timeLabel = (c.startTime || c.endTime) ? '　' + jpTimeRange(c.startTime, c.endTime) : '';
+      opt.textContent = dateLabel + timeLabel + '　' + (c.name || '(名称未設定)');
       sel.appendChild(opt);
     });
     if (current) sel.value = current;
@@ -448,6 +492,7 @@
       if (results[3] && results[3].ok) { appSettings = results[3].data || appSettings; }
       fillSelect($('f-department'), departments.map(function (d) { return d.name; }), '（未設定）');
       fillSelect($('f-format'), pulldownOptions['研修形式'] || ['座学'], null);
+      fillSelect($('f-venue'), venueOptions(), '－ 選択してください －');
       renderCourseSelect();
       renderList();
     }).catch(function () {});
@@ -460,16 +505,15 @@
     return Math.round((d - today) / 86400000);
   }
 
-  /** 支払予定日のデフォルト計算：開催日が25日までならその月末、それ以外は翌月末 */
+  /** 支払予定日のデフォルト計算：開催日が25日までならその月の末日、それ以外は翌月10日 */
   function calcDefaultPaymentDueDate(eventDateStr) {
     if (!eventDateStr) return '';
     var parts = eventDateStr.split('-');
     var y = Number(parts[0]), m = Number(parts[1]) - 1, day = Number(parts[2]);
-    var targetMonth = day <= 25 ? m : m + 1;
-    var lastDay = new Date(y, targetMonth + 1, 0);
-    var yyyy = lastDay.getFullYear();
-    var mm = String(lastDay.getMonth() + 1).padStart(2, '0');
-    var dd = String(lastDay.getDate()).padStart(2, '0');
+    var due = day <= 25 ? new Date(y, m + 1, 0) : new Date(y, m + 1, 10);
+    var yyyy = due.getFullYear();
+    var mm = String(due.getMonth() + 1).padStart(2, '0');
+    var dd = String(due.getDate()).padStart(2, '0');
     return yyyy + '-' + mm + '-' + dd;
   }
 
@@ -486,7 +530,7 @@
     $('f-eventDate').value = c.eventDate || '';
     $('f-startTime').value = c.startTime || '';
     $('f-endTime').value = c.endTime || '';
-    $('f-venue').value = c.venue || '';
+    applyVenueToForm(c.venue || '');
     $('f-topic').value = c.name || '';
     if (c.format) $('f-format').value = c.format;
     $('f-directorName').value = c.directorName || '';
@@ -649,7 +693,9 @@
       var row = document.createElement('div');
       row.className = 'missing-row';
       var label = document.createElement('span');
-      label.textContent = (c.name || '(名称未設定)') + '　開催日：' + (c.eventDate ? withWeekday(c.eventDate) : '未定');
+      var dateLabel = c.eventDate ? jpDate(c.eventDate, true) : '未定';
+      var timeLabel = (c.startTime || c.endTime) ? '　' + jpTimeRange(c.startTime, c.endTime) : '';
+      label.textContent = (c.name || '(名称未設定)') + '　開催日時：' + dateLabel + timeLabel;
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn btn-outline';
@@ -710,7 +756,9 @@
       tr.appendChild(tdDirector);
 
       var tdDate = document.createElement('td');
-      tdDate.textContent = inv.eventDate ? withWeekday(inv.eventDate) : '未定';
+      var invDateLabel = inv.eventDate ? jpDate(inv.eventDate, true) : '未定';
+      var invTimeLabel = (inv.startTime || inv.endTime) ? '　' + jpTimeRange(inv.startTime, inv.endTime) : '';
+      tdDate.textContent = invDateLabel + invTimeLabel;
       tr.appendChild(tdDate);
 
       var tdFee = document.createElement('td');
@@ -807,7 +855,7 @@
     $('f-eventDate').value = inv ? (inv.eventDate || '') : '';
     $('f-startTime').value = inv ? (inv.startTime || '') : '';
     $('f-endTime').value = inv ? (inv.endTime || '') : '';
-    $('f-venue').value = inv ? (inv.venue || '') : '';
+    applyVenueToForm(inv ? (inv.venue || '') : '');
     $('f-topic').value = inv ? (inv.topic || '') : '';
     $('f-format').value = inv ? (inv.format || '座学') : '座学';
     $('f-department').value = inv ? (inv.department || '') : '';
@@ -842,7 +890,7 @@
       eventDate: $('f-eventDate').value,
       startTime: $('f-startTime').value,
       endTime: $('f-endTime').value,
-      venue: $('f-venue').value,
+      venue: resolveVenueFromForm(),
       topic: $('f-topic').value,
       format: $('f-format').value,
       directorName: $('f-directorName').value,
@@ -903,6 +951,7 @@
     $('btnInvoiceCancel').addEventListener('click', closeModal);
     $('btnInvoiceSave').addEventListener('click', saveInvoice);
     $('f-fee').addEventListener('input', updateModalCalc);
+    $('f-venue').addEventListener('change', onVenueSelectChange);
     $('f-course').addEventListener('change', onCourseSelected);
     $('f-eventDate').addEventListener('change', applyDefaultPaymentDueDate);
     $('f-paymentDueDate').addEventListener('input', function () { paymentDueDateTouched = true; });

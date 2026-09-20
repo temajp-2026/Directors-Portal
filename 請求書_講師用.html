@@ -91,13 +91,17 @@
   .radio-group { display: flex; gap: 18px; align-items: center; font-size: 13px; flex-wrap: wrap; }
   .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; color: var(--gw-text); }
 
+  .field-error { font-size: 11px; color: var(--gw-red); margin-top: 4px; line-height: 1.5; }
+  input.field-invalid, select.field-invalid, textarea.field-invalid { border-color: var(--gw-red); background: var(--gw-red-tint); }
+  .field-note { font-size: 11.5px; color: var(--gw-text-secondary); margin: -2px 0 10px; line-height: 1.6; }
+
   .signature-row { display: flex; justify-content: flex-end; margin-top: 10px; }
   .signature-fields { font-size: 12px; color: var(--gw-text-secondary); text-align: right; width: 100%; max-width: 360px; }
   .signature-fields .sig-note { text-align: left; font-size: 12px; color: var(--gw-text-secondary); margin: 0 0 12px; }
   .signature-fields .sig-line { margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .signature-fields input { width: 190px; display: inline-block; }
 
-  .lecturer-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+  .lecturer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
   .confirmed-note {
     background: var(--gw-green-tint); border: 1px solid #b7e1c3; color: var(--gw-green); font-size: 12.5px;
@@ -194,6 +198,7 @@
           <tr><th>消費税（10%）</th><td class="amount-cell" id="doc-tax">¥0</td></tr>
           <tr><th>小計（税込）</th><td class="amount-cell" id="doc-subtotal">¥0</td></tr>
           <tr><th>源泉徴収税額</th><td class="amount-cell" id="doc-withholding">¥0</td></tr>
+          <tr id="doc-extrasRow" class="hidden"><th>交通費・宿泊費（実費）</th><td class="amount-cell" id="doc-extras">¥0</td></tr>
           <tr class="total-row"><th>差引お支払い合計（振込予定額）</th><td class="amount-cell" id="doc-total">¥0</td></tr>
           <tr><th>交通費・宿泊費の扱い</th><td id="doc-travel">別途支給</td></tr>
           <tr><th>支払方法</th><td id="doc-paymentMethod">未定</td></tr>
@@ -207,6 +212,14 @@
       <div class="section-title">4. 講師記入欄</div>
       <div class="lecturer-box">
         <p class="lecturer-note">以下の項目をご確認のうえ、ご記入・ご選択いただき、最後に「内容を確定する」を押してください。</p>
+
+        <div id="travelFeeSection" class="hidden">
+          <p class="lecturer-note">交通費・宿泊費は別途支給となっております。実費をご記入ください（下記のお支払い合計に反映されます）。</p>
+          <div class="field-grid">
+            <div class="field"><span class="field-label">交通費（実費・円）</span><input type="number" min="0" step="1" id="lec-travelFee" value="0" aria-label="交通費"></div>
+            <div class="field"><span class="field-label">宿泊費（実費・円）</span><input type="number" min="0" step="1" id="lec-lodgingFee" value="0" aria-label="宿泊費"></div>
+          </div>
+        </div>
 
         <div class="field-grid single">
           <div class="field">
@@ -222,6 +235,7 @@
           <div class="field">
             <span class="field-label">登録番号（T + 13桁）</span>
             <input type="text" id="lec-invoiceNumber" placeholder="T1234567890123" aria-label="インボイス登録番号">
+            <div class="field-error hidden" id="err-lec-invoiceNumber">登録番号は「T」+数字13桁で入力してください（例：T1234567890123）</div>
           </div>
         </div>
 
@@ -236,21 +250,21 @@
         </div>
 
         <div id="withholdingIndividualFields" class="field-grid hidden" style="margin-top: 14px;">
-          <div class="field"><span class="field-label">お名前</span><input type="text" id="lec-name" aria-label="お名前"></div>
-          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-contact" aria-label="ご連絡先"></div>
-          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-address" aria-label="ご住所"></div>
+          <div class="field"><span class="field-label">お名前</span><input type="text" id="lec-name" aria-label="お名前"><div class="field-error hidden" id="err-lec-name">お名前をご入力ください</div></div>
+          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-contact" aria-label="ご連絡先"><div class="field-error hidden" id="err-lec-contact">ご連絡先をご入力ください</div></div>
+          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-address" aria-label="ご住所"><div class="field-error hidden" id="err-lec-address">ご住所をご入力ください</div></div>
         </div>
 
         <div id="withholdingCorporateFields" class="field-grid hidden" style="margin-top: 14px;">
-          <div class="field"><span class="field-label">会社名</span><input type="text" id="lec-companyName" aria-label="会社名"></div>
-          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-companyContact" aria-label="ご連絡先"></div>
-          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-companyAddress" aria-label="ご住所"></div>
-          <div class="field full-span"><span class="field-label">メールアドレス</span><input type="text" id="lec-companyEmail" aria-label="メールアドレス"></div>
+          <div class="field"><span class="field-label">会社名</span><input type="text" id="lec-companyName" aria-label="会社名"><div class="field-error hidden" id="err-lec-companyName">会社名をご入力ください</div></div>
+          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-companyContact" aria-label="ご連絡先"><div class="field-error hidden" id="err-lec-companyContact">ご連絡先をご入力ください</div></div>
+          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-companyAddress" aria-label="ご住所"><div class="field-error hidden" id="err-lec-companyAddress">ご住所をご入力ください</div></div>
+          <div class="field full-span"><span class="field-label">メールアドレス</span><input type="text" id="lec-companyEmail" aria-label="メールアドレス"><div class="field-error hidden" id="err-lec-companyEmail">メールアドレスを正しい形式でご入力ください</div></div>
         </div>
 
         <div class="field-grid" style="margin-top: 14px;">
-          <div class="field"><span class="field-label">振込先金融機関名</span><input type="text" id="lec-bankName" aria-label="金融機関名"></div>
-          <div class="field"><span class="field-label">支店名</span><input type="text" id="lec-branchName" aria-label="支店名"></div>
+          <div class="field"><span class="field-label">振込先金融機関名</span><input type="text" id="lec-bankName" aria-label="金融機関名"><div class="field-error hidden" id="err-lec-bankName">金融機関名をご入力ください</div></div>
+          <div class="field"><span class="field-label">支店名</span><input type="text" id="lec-branchName" aria-label="支店名"><div class="field-error hidden" id="err-lec-branchName">支店名をご入力ください</div></div>
           <div class="field">
             <span class="field-label">口座種別</span>
             <select id="lec-accountType" aria-label="口座種別">
@@ -258,8 +272,8 @@
               <option value="当座">当座</option>
             </select>
           </div>
-          <div class="field"><span class="field-label">口座番号</span><input type="text" id="lec-accountNumber" aria-label="口座番号"></div>
-          <div class="field full-span"><span class="field-label">口座名義（フリガナ）</span><input type="text" id="lec-accountHolderKana" aria-label="口座名義フリガナ"></div>
+          <div class="field"><span class="field-label">口座番号</span><input type="text" inputmode="numeric" id="lec-accountNumber" aria-label="口座番号"><div class="field-error hidden" id="err-lec-accountNumber">口座番号を半角数字でご入力ください</div></div>
+          <div class="field full-span"><span class="field-label">口座名義（フリガナ）</span><input type="text" id="lec-accountHolderKana" aria-label="口座名義フリガナ"><div class="field-error hidden" id="err-lec-accountHolderKana">口座名義（フリガナ）をご入力ください</div></div>
         </div>
 
         <div class="field-grid single" style="margin-top: 14px;">
@@ -269,6 +283,7 @@
               <label><input type="radio" name="photoConsent" value="agree"> 承諾する</label>
               <label><input type="radio" name="photoConsent" value="decline"> お断りする</label>
             </div>
+            <div class="field-error hidden" id="err-photoConsent">いずれかを選択してください</div>
           </div>
         </div>
 
@@ -280,12 +295,14 @@
               <label><input type="radio" name="archiveConsent" value="conditional"> 条件による</label>
               <label><input type="radio" name="archiveConsent" value="decline"> お断りする</label>
             </div>
+            <div class="field-error hidden" id="err-archiveConsent">いずれかを選択してください</div>
           </div>
         </div>
         <div id="archiveConditionWrap" class="field-grid single hidden" style="margin-top: 10px;">
           <div class="field">
             <span class="field-label">条件（自由にご記入ください）</span>
             <textarea id="lec-archiveConsentCondition" rows="2" aria-label="アーカイブ配信の条件"></textarea>
+            <div class="field-error hidden" id="err-lec-archiveConsentCondition">条件をご記入ください</div>
           </div>
         </div>
       </div>
@@ -295,14 +312,20 @@
         <div class="signature-fields">
           <p class="sig-note">上記内容を確認のうえ、下記のとおり署名します。</p>
           <div class="sig-line">提出日：<input type="date" id="lec-submitDate" aria-label="提出日"></div>
+          <div class="field-error hidden" id="err-lec-submitDate" style="text-align:right;">提出日をご入力ください</div>
           <div class="sig-line">署名（社名／氏名）：<input type="text" id="lec-signerName" placeholder="署名をご記入ください" aria-label="社名または氏名"></div>
+          <div class="field-error hidden" id="err-lec-signerName" style="text-align:right;">署名（社名／氏名）をご入力ください</div>
         </div>
       </div>
 
-      <div id="confirmedNote" class="confirmed-note hidden no-print">この内容で確定済みです。内容を修正した場合は、もう一度「内容を確定する」を押してください。</div>
+      <div id="confirmedNote" class="confirmed-note hidden no-print">
+        この内容で確定済みです。内容を変更する場合は、担当理事までご連絡ください。<br>
+        下のボタンから確定内容を印刷・PDF保存できます。
+      </div>
 
       <div class="lecturer-actions no-print">
         <button type="button" id="btnConfirm" class="btn btn-primary">内容を確定する</button>
+        <button type="button" id="btnPrintAfterConfirm" class="btn btn-outline hidden">確定内容を印刷 / PDF保存</button>
       </div>
     </div>
   </div>
@@ -318,6 +341,7 @@
   var EQUIPMENT_LABELS = { projector: 'プロジェクター', pc: 'PC', mic: 'マイク', whiteboard: 'ホワイトボード', greenroom: '控室', screen: 'スクリーン' };
 
   var invoiceId = null;
+  var currentInvoice = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -345,12 +369,30 @@
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     return base + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
   }
-  function calcAmounts(fee, withholdingType) {
+  /** "09:00" → "9時00分" のような表示用の時刻文字列に変換する */
+  function jpTime(hm) {
+    if (!hm) return '';
+    var parts = String(hm).split(':');
+    if (parts.length < 2) return hm;
+    return Number(parts[0]) + '時' + parts[1] + '分';
+  }
+  function jpTimeRange(start, end) {
+    if (!start && !end) return '未定';
+    if (start && end) return jpTime(start) + '～' + jpTime(end) + 'まで';
+    if (start) return jpTime(start) + '～';
+    return '～' + jpTime(end) + 'まで';
+  }
+
+  var VENUE_HALL_2F = '白王ビル２Fホール';
+  var VENUE_HALL_2F_ADDRESS = '東京都文京区後楽2-3-10';
+
+  function calcAmounts(fee, withholdingType, travelFee, lodgingFee) {
     fee = Math.max(0, Math.round(Number(fee) || 0));
     var tax = Math.floor(fee * 0.10);
     var subtotal = fee + tax;
     var withholding = withholdingType === '法人' ? 0 : Math.floor(fee * 0.1021);
-    return { fee: fee, tax: tax, subtotal: subtotal, withholding: withholding, total: subtotal - withholding };
+    var extras = Math.max(0, Math.round(Number(travelFee) || 0)) + Math.max(0, Math.round(Number(lodgingFee) || 0));
+    return { fee: fee, tax: tax, subtotal: subtotal, withholding: withholding, extras: extras, total: subtotal - withholding + extras };
   }
 
   function showToast(msg) {
@@ -366,23 +408,40 @@
     return el ? el.value : '';
   }
 
+  /** 謝礼・交通費/宿泊費(実費)・源泉徴収額をもとに、お支払い合計を再計算して表示する。
+   * 源泉区分や交通費/宿泊費の入力が変わるたびに呼び出す。 */
+  function updateTotals() {
+    if (!currentInvoice) return;
+    var withholdingType = radioValue('withholdingType') || currentInvoice.withholdingType || '個人';
+    var isTravelSeparate = (currentInvoice.travelHandling || '別途支給') === '別途支給';
+    var travelFee = isTravelSeparate ? $('lec-travelFee').value : 0;
+    var lodgingFee = isTravelSeparate ? $('lec-lodgingFee').value : 0;
+    var c = calcAmounts(currentInvoice.feeExTax, withholdingType, travelFee, lodgingFee);
+    $('doc-fee').textContent = yen(c.fee);
+    $('doc-tax').textContent = yen(c.tax);
+    $('doc-subtotal').textContent = yen(c.subtotal);
+    $('doc-withholding').textContent = yen(c.withholding);
+    $('doc-extrasRow').classList.toggle('hidden', !isTravelSeparate);
+    $('doc-extras').textContent = yen(c.extras);
+    $('doc-total').textContent = yen(c.total);
+  }
+
   function renderInvoice(inv) {
     $('doc-createdDate').textContent = jpDate(inv.createdAt ? String(inv.createdAt).slice(0, 10) : '');
     $('doc-eventDate').textContent = jpDate(inv.eventDate, true);
-    $('doc-time').textContent = (inv.startTime || inv.endTime) ? (inv.startTime || '未定') + '〜' + (inv.endTime || '未定') : '未定';
-    $('doc-venue').textContent = inv.venue || '未定';
+    $('doc-time').textContent = jpTimeRange(inv.startTime, inv.endTime);
+    $('doc-venue').textContent = (inv.venue || '未定') + (inv.venue === VENUE_HALL_2F ? '　（' + VENUE_HALL_2F_ADDRESS + '）' : '');
     $('doc-topic').textContent = inv.topic || '未定';
     $('doc-format').textContent = inv.format || '未定';
     $('doc-director').textContent = inv.directorName || '未定';
     $('doc-department').textContent = inv.department || '未定';
 
-    var withholdingType = inv.withholdingType || '個人';
-    var c = calcAmounts(inv.feeExTax, withholdingType);
-    $('doc-fee').textContent = yen(c.fee);
-    $('doc-tax').textContent = yen(c.tax);
-    $('doc-subtotal').textContent = yen(c.subtotal);
-    $('doc-withholding').textContent = yen(c.withholding);
-    $('doc-total').textContent = yen(c.total);
+    currentInvoice = inv;
+    var isTravelSeparate = (inv.travelHandling || '別途支給') === '別途支給';
+    $('lec-travelFee').value = inv.travelFee || 0;
+    $('lec-lodgingFee').value = inv.lodgingFee || 0;
+    $('travelFeeSection').classList.toggle('hidden', !isTravelSeparate);
+    updateTotals();
     $('doc-travel').textContent = inv.travelHandling || '別途支給';
     $('doc-paymentMethod').textContent = inv.paymentMethod || '未定';
     $('doc-paymentDueDate').textContent = jpDate(inv.paymentDueDate);
@@ -425,17 +484,116 @@
     $('lec-submitDate').value = inv.submitDate || new Date().toISOString().slice(0, 10);
     $('lec-signerName').value = inv.signerName || '';
 
-    $('confirmedNote').classList.toggle('hidden', inv.status !== '確定済み');
+    applyLockState(inv);
+  }
+
+  /** 確定済み(またはそれ以降のステータス)になったら、講師本人による再編集はできないようにする。
+   * 内容の変更が必要な場合は担当理事に連絡してもらう運用にすることで、確定後の誤変更を防ぐ。 */
+  function applyLockState(inv) {
+    var locked = !!(inv.status && inv.status !== '作成済み');
+    document.querySelectorAll('#docShell input, #docShell select, #docShell textarea').forEach(function (el) {
+      el.disabled = locked;
+    });
+    $('btnConfirm').classList.toggle('hidden', locked);
+    $('btnPrintAfterConfirm').classList.toggle('hidden', !locked);
+    $('confirmedNote').classList.toggle('hidden', !locked);
   }
 
   function toggleInvoiceNumberField() {
     $('invoiceNumberWrap').classList.toggle('hidden', !$('lec-invoice-yes').checked);
   }
 
+  /* ---------- 入力チェック ---------- */
+  function setFieldError(id, msg) {
+    var input = $(id);
+    var errEl = $('err-' + id);
+    if (input) input.classList.toggle('field-invalid', !!msg);
+    if (errEl) {
+      if (msg) errEl.textContent = msg;
+      errEl.classList.toggle('hidden', !msg);
+    }
+  }
+
+  function setGroupError(errId, show) {
+    var errEl = $(errId);
+    if (errEl) errEl.classList.toggle('hidden', !show);
+  }
+
+  var INVOICE_NUMBER_RE = /^T\d{13}$/;
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  var DIGITS_RE = /^[0-9０-９]+$/;
+
+  function validateInvoiceNumber() {
+    if (!$('lec-invoice-yes').checked) { setFieldError('lec-invoiceNumber', ''); return true; }
+    var val = $('lec-invoiceNumber').value.trim();
+    var ok = INVOICE_NUMBER_RE.test(val);
+    setFieldError('lec-invoiceNumber', ok ? '' : '登録番号は「T」+数字13桁で入力してください（例：T1234567890123）');
+    return ok;
+  }
+
+  function requireField(id, msg) {
+    var val = $(id).value.trim();
+    var ok = !!val;
+    setFieldError(id, ok ? '' : msg);
+    return ok;
+  }
+
+  /** 講師記入欄のすべての項目を確認し、不備があれば該当欄にエラーを表示する。1つでも不備があればfalseを返す。 */
+  function validateForm() {
+    var ok = true;
+
+    if (!validateInvoiceNumber()) ok = false;
+
+    var withholdingType = radioValue('withholdingType') || '個人';
+    if (withholdingType === '個人') {
+      if (!requireField('lec-name', 'お名前をご入力ください')) ok = false;
+      if (!requireField('lec-contact', 'ご連絡先をご入力ください')) ok = false;
+      if (!requireField('lec-address', 'ご住所をご入力ください')) ok = false;
+    } else {
+      if (!requireField('lec-companyName', '会社名をご入力ください')) ok = false;
+      if (!requireField('lec-companyContact', 'ご連絡先をご入力ください')) ok = false;
+      if (!requireField('lec-companyAddress', 'ご住所をご入力ください')) ok = false;
+      var email = $('lec-companyEmail').value.trim();
+      var emailOk = !!email && EMAIL_RE.test(email);
+      setFieldError('lec-companyEmail', emailOk ? '' : 'メールアドレスを正しい形式でご入力ください');
+      if (!emailOk) ok = false;
+    }
+
+    if (!requireField('lec-bankName', '金融機関名をご入力ください')) ok = false;
+    if (!requireField('lec-branchName', '支店名をご入力ください')) ok = false;
+    var accountNumber = $('lec-accountNumber').value.trim();
+    var accountNumberOk = !!accountNumber && DIGITS_RE.test(accountNumber);
+    setFieldError('lec-accountNumber', accountNumberOk ? '' : '口座番号を半角数字でご入力ください');
+    if (!accountNumberOk) ok = false;
+    if (!requireField('lec-accountHolderKana', '口座名義（フリガナ）をご入力ください')) ok = false;
+
+    var photoOk = !!radioValue('photoConsent');
+    setGroupError('err-photoConsent', !photoOk);
+    if (!photoOk) ok = false;
+
+    if (!$('archiveConsentWrap').classList.contains('hidden')) {
+      var archiveVal = radioValue('archiveConsent');
+      var archiveOk = !!archiveVal;
+      setGroupError('err-archiveConsent', !archiveOk);
+      if (!archiveOk) ok = false;
+      if (archiveVal === 'conditional') {
+        if (!requireField('lec-archiveConsentCondition', '条件をご記入ください')) ok = false;
+      } else {
+        setFieldError('lec-archiveConsentCondition', '');
+      }
+    }
+
+    if (!requireField('lec-submitDate', '提出日をご入力ください')) ok = false;
+    if (!requireField('lec-signerName', '署名（社名／氏名）をご入力ください')) ok = false;
+
+    return ok;
+  }
+
   function toggleWithholdingFields() {
     var type = radioValue('withholdingType') || '個人';
     $('withholdingIndividualFields').classList.toggle('hidden', type !== '個人');
     $('withholdingCorporateFields').classList.toggle('hidden', type !== '法人');
+    updateTotals();
   }
 
   function toggleArchiveConditionField() {
@@ -443,6 +601,16 @@
   }
 
   function submitConfirm() {
+    if (!validateForm()) {
+      showToast('入力内容をご確認ください（赤字の項目があります）');
+      var firstInvalid = document.querySelector('#docShell .field-invalid, #docShell .field-error:not(.hidden)');
+      if (firstInvalid) { firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      return;
+    }
+
+    if (!confirm('内容を確定すると、以降はご自身で内容を変更できなくなります。\n変更が必要な場合は担当理事にご連絡ください。\n\nこの内容で確定してよろしいですか？')) return;
+
+    var isTravelSeparate = !!(currentInvoice && (currentInvoice.travelHandling || '別途支給') === '別途支給');
     var payload = {
       id: invoiceId,
       invoiceRegistered: radioValue('invoiceRegistered'),
@@ -464,9 +632,10 @@
       archiveConsent: radioValue('archiveConsent'),
       archiveConsentCondition: $('lec-archiveConsentCondition').value,
       submitDate: $('lec-submitDate').value,
-      signerName: $('lec-signerName').value
+      signerName: $('lec-signerName').value,
+      travelFee: isTravelSeparate ? (Number($('lec-travelFee').value) || 0) : 0,
+      lodgingFee: isTravelSeparate ? (Number($('lec-lodgingFee').value) || 0) : 0
     };
-    if (!payload.signerName) { showToast('社名／氏名を入力してください'); return; }
 
     var btn = $('btnConfirm');
     btn.disabled = true;
@@ -475,8 +644,7 @@
     callApi('submitInvoiceLecturer', payload).then(function (res) {
       if (!res.ok) { showToast('送信に失敗しました：' + res.error); return; }
       showToast('確定しました。ありがとうございました。');
-      $('confirmedNote').classList.remove('hidden');
-      // 金額表示に反映(源泉区分が変わった場合に備えて再計算)
+      // 金額表示・ロック状態に反映(源泉区分が変わった場合に備えて再計算)
       return callApi('getInvoicePublic', { id: invoiceId });
     }).then(function (res) {
       if (res && res.ok) { renderInvoice(res.data); }
@@ -490,7 +658,7 @@
     invoiceId = getIdFromUrl();
 
     document.querySelectorAll('input[name="invoiceRegistered"]').forEach(function (r) {
-      r.addEventListener('change', toggleInvoiceNumberField);
+      r.addEventListener('change', function () { toggleInvoiceNumberField(); validateInvoiceNumber(); });
     });
     document.querySelectorAll('input[name="withholdingType"]').forEach(function (r) {
       r.addEventListener('change', toggleWithholdingFields);
@@ -498,7 +666,11 @@
     document.querySelectorAll('input[name="archiveConsent"]').forEach(function (r) {
       r.addEventListener('change', toggleArchiveConditionField);
     });
+    $('lec-invoiceNumber').addEventListener('input', validateInvoiceNumber);
+    $('lec-travelFee').addEventListener('input', updateTotals);
+    $('lec-lodgingFee').addEventListener('input', updateTotals);
     $('btnPrint').addEventListener('click', function () { window.print(); });
+    $('btnPrintAfterConfirm').addEventListener('click', function () { window.print(); });
     $('btnConfirm').addEventListener('click', submitConfirm);
 
     if (!invoiceId) {

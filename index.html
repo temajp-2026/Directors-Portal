@@ -187,6 +187,7 @@
   .field { margin-bottom: 14px; }
   .field label { font-size: 12px; font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 5px; }
   .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 14px; }
+  .full-span { grid-column: 1 / -1; }
   input[type="text"], input[type="date"], input[type="time"], select {
     width: 100%; font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: 13px;
     padding: 9px 12px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface); color: var(--gw-text);
@@ -290,7 +291,7 @@
       </div>
       <div class="field">
         <label for="c-venue">開催場所</label>
-        <input type="text" id="c-venue" placeholder="例）本部研修室">
+        <select id="c-venue"></select>
       </div>
       <div class="field">
         <label for="c-startTime">開始時刻</label>
@@ -300,6 +301,10 @@
         <label for="c-endTime">終了時刻</label>
         <input type="time" id="c-endTime">
       </div>
+    </div>
+    <div class="field full-span hidden" id="c-venueOtherWrap">
+      <label for="c-venueOther">開催場所（自由記入）</label>
+      <input type="text" id="c-venueOther" placeholder="例）〇〇市民センター 会議室A">
     </div>
     <div class="field">
       <label for="c-directorName">担当理事</label>
@@ -363,12 +368,53 @@
   function $(id) { return document.getElementById(id); }
 
   var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-  function withWeekday(dateStr) {
+  /** "2026-09-20" → "2026年9月20日（日）" のような表示用の日付文字列に変換する */
+  function jpDate(dateStr, withWeekday) {
     if (!dateStr) return '';
     var parts = String(dateStr).split('-');
     if (parts.length !== 3) return dateStr;
+    var base = Number(parts[0]) + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+    if (!withWeekday) return base;
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    return dateStr + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+    return base + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+  }
+  /** "09:00" → "9時00分" のような表示用の時刻文字列に変換する */
+  function jpTime(hm) {
+    if (!hm) return '';
+    var parts = String(hm).split(':');
+    if (parts.length < 2) return hm;
+    return Number(parts[0]) + '時' + parts[1] + '分';
+  }
+  function jpTimeRange(start, end) {
+    if (!start && !end) return '';
+    if (start && end) return jpTime(start) + '～' + jpTime(end) + 'まで';
+    if (start) return jpTime(start) + '～';
+    return '～' + jpTime(end) + 'まで';
+  }
+
+  var VENUE_OTHER_LABEL = 'その他（自由記入）';
+  function venueOptions() {
+    return (pulldownOptions['開催場所'] && pulldownOptions['開催場所'].length)
+      ? pulldownOptions['開催場所']
+      : ['白王ビル２Fホール', '白王ビル３Fセミナールーム', VENUE_OTHER_LABEL];
+  }
+  function onVenueSelectChange() {
+    var isOther = $('c-venue').value === VENUE_OTHER_LABEL;
+    $('c-venueOtherWrap').classList.toggle('hidden', !isOther);
+  }
+  function applyVenueToForm(venue) {
+    var known = venueOptions().filter(function (v) { return v !== VENUE_OTHER_LABEL; });
+    if (venue && known.indexOf(venue) === -1) {
+      $('c-venue').value = VENUE_OTHER_LABEL;
+      $('c-venueOther').value = venue;
+    } else {
+      $('c-venue').value = venue || '';
+      $('c-venueOther').value = '';
+    }
+    onVenueSelectChange();
+  }
+  function resolveVenueFromForm() {
+    return $('c-venue').value === VENUE_OTHER_LABEL ? $('c-venueOther').value : $('c-venue').value;
   }
 
   function showToast(msg) {
@@ -411,6 +457,7 @@
       fillSelect($('c-department'), departments.map(function (d) { return d.name; }), '(未設定)');
       fillSelect($('c-format'), pulldownOptions['研修形式'] || ['座学'], null);
       fillSelect($('c-status'), pulldownOptions['講座ステータス'] || ['準備中'], null);
+      fillSelect($('c-venue'), venueOptions(), '－ 選択してください －');
     }).catch(function () {});
   }
 
@@ -502,14 +549,14 @@
       card.innerHTML =
         '<div class="course-name"></div>' +
         '<div class="course-meta">' +
-        '開催日：<span class="c-date"></span>' + (c.startTime ? '（<span class="c-time"></span>）' : '') + '<br>' +
+        '開催日時：<span class="c-date"></span><span class="c-time"></span><br>' +
         '開催場所：<span class="c-venue"></span><br>' +
         '担当理事：<span class="c-director"></span>' + (c.department ? '（<span class="c-department"></span>）' : '') +
         '</div>' +
         '<span class="status-badge"></span>';
       card.querySelector('.course-name').textContent = c.name || '(名称未設定)';
-      card.querySelector('.c-date').textContent = c.eventDate ? withWeekday(c.eventDate) : '未定';
-      if (c.startTime) { card.querySelector('.c-time').textContent = c.startTime + (c.endTime ? '〜' + c.endTime : ''); }
+      card.querySelector('.c-date').textContent = c.eventDate ? jpDate(c.eventDate, true) : '未定';
+      card.querySelector('.c-time').textContent = (c.startTime || c.endTime) ? '　' + jpTimeRange(c.startTime, c.endTime) : '';
       card.querySelector('.c-venue').textContent = c.venue || '未定';
       card.querySelector('.c-director').textContent = c.directorName || '未定';
       if (c.department) { card.querySelector('.c-department').textContent = c.department; }
@@ -526,7 +573,7 @@
     $('courseModalTitle').textContent = course ? '講座を編集' : '新しい講座を追加';
     $('c-name').value = course ? course.name : '';
     $('c-eventDate').value = course ? course.eventDate : '';
-    $('c-venue').value = course ? (course.venue || '') : '';
+    applyVenueToForm(course ? (course.venue || '') : '');
     $('c-startTime').value = course ? (course.startTime || '') : '';
     $('c-endTime').value = course ? (course.endTime || '') : '';
     $('c-directorName').value = course ? course.directorName : '';
@@ -547,7 +594,7 @@
       eventDate: $('c-eventDate').value,
       startTime: $('c-startTime').value,
       endTime: $('c-endTime').value,
-      venue: $('c-venue').value,
+      venue: resolveVenueFromForm(),
       directorName: $('c-directorName').value,
       department: $('c-department').value,
       format: $('c-format').value,
@@ -592,6 +639,7 @@
     $('btnAddCourse').addEventListener('click', function () { openCourseModal(null); });
     $('btnCourseCancel').addEventListener('click', closeCourseModal);
     $('btnCourseSave').addEventListener('click', saveCourse);
+    $('c-venue').addEventListener('change', onVenueSelectChange);
     $('courseModal').addEventListener('click', function (e) {
       if (e.target.id === 'courseModal') closeCourseModal();
     });
