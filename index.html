@@ -167,11 +167,12 @@
     display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 50;
   }
   .hidden { display: none !important; }
-  .modal-panel { background: #ffffff; width: 100%; max-width: 440px; border-radius: 6px; padding: 26px 28px 28px; }
+  .modal-panel { background: #ffffff; width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; border-radius: 6px; padding: 26px 28px 28px; }
   .modal-title { font-family: 'Shippori Mincho', serif; font-size: 17px; font-weight: 700; color: #152744; margin-bottom: 18px; }
   .field { margin-bottom: 14px; }
   .field label { font-size: 12px; font-weight: 700; color: #3c4a5f; display: block; margin-bottom: 5px; }
-  input[type="text"], input[type="date"], select {
+  .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 14px; }
+  input[type="text"], input[type="date"], input[type="time"], select {
     width: 100%; font-family: 'BIZ UDPGothic', system-ui, sans-serif; font-size: 13px;
     padding: 8px 10px; border: 1px solid #c7cede; border-radius: 3px; background: #ffffff; color: #1c2b3a;
   }
@@ -266,22 +267,41 @@
       <label for="c-name">講座名</label>
       <input type="text" id="c-name" placeholder="例）繊維製品の適切な取り扱いについて">
     </div>
-    <div class="field">
-      <label for="c-eventDate">開催日</label>
-      <input type="date" id="c-eventDate">
+    <div class="field-grid">
+      <div class="field">
+        <label for="c-eventDate">開催日</label>
+        <input type="date" id="c-eventDate">
+      </div>
+      <div class="field">
+        <label for="c-venue">開催場所</label>
+        <input type="text" id="c-venue" placeholder="例）本部研修室">
+      </div>
+      <div class="field">
+        <label for="c-startTime">開始時刻</label>
+        <input type="time" id="c-startTime">
+      </div>
+      <div class="field">
+        <label for="c-endTime">終了時刻</label>
+        <input type="time" id="c-endTime">
+      </div>
     </div>
     <div class="field">
       <label for="c-directorName">担当理事</label>
       <input type="text" id="c-directorName" placeholder="例）山田太郎">
     </div>
+    <div class="field-grid">
+      <div class="field">
+        <label for="c-department">担当科</label>
+        <select id="c-department"></select>
+      </div>
+      <div class="field">
+        <label for="c-format">研修形式</label>
+        <select id="c-format"></select>
+      </div>
+    </div>
     <div class="field">
       <label for="c-status">ステータス</label>
-      <select id="c-status">
-        <option value="準備中">準備中</option>
-        <option value="実施予定">実施予定</option>
-        <option value="実施済み">実施済み</option>
-        <option value="中止">中止</option>
-      </select>
+      <select id="c-status"></select>
     </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-cancel" id="btnCourseCancel">キャンセル</button>
@@ -305,6 +325,8 @@
   var currentIdToken = null;
   var courses = [];
   var editingCourseId = null;
+  var departments = [];
+  var pulldownOptions = {};
 
   // 同じタブ内で他の理事ポータルのツール(請求書管理簿など)に移動しても
   // 再ログインを求めないよう、ログイン情報をタブ内に一時保存する。
@@ -323,6 +345,15 @@
   }
 
   function $(id) { return document.getElementById(id); }
+
+  var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  function withWeekday(dateStr) {
+    if (!dateStr) return '';
+    var parts = String(dateStr).split('-');
+    if (parts.length !== 3) return dateStr;
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return dateStr + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+  }
 
   function showToast(msg) {
     var t = $('toast');
@@ -353,6 +384,37 @@
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     renderCourses();
+    loadMasterData();
+  }
+
+  /** 担当科・研修形式・ステータスのプルダウン選択肢をSS(スプレッドシート)から取得する */
+  function loadMasterData() {
+    Promise.all([callApi('listDepartments'), callApi('listOptions')]).then(function (results) {
+      if (results[0] && results[0].ok) { departments = results[0].data || []; }
+      if (results[1] && results[1].ok) { pulldownOptions = results[1].data || {}; }
+      fillSelect($('c-department'), departments.map(function (d) { return d.name; }), '(未設定)');
+      fillSelect($('c-format'), pulldownOptions['研修形式'] || ['座学'], null);
+      fillSelect($('c-status'), pulldownOptions['講座ステータス'] || ['準備中'], null);
+    }).catch(function () {});
+  }
+
+  function fillSelect(selectEl, values, emptyLabel) {
+    if (!selectEl) return;
+    var current = selectEl.value;
+    selectEl.innerHTML = '';
+    if (emptyLabel !== null && emptyLabel !== undefined) {
+      var optEmpty = document.createElement('option');
+      optEmpty.value = '';
+      optEmpty.textContent = emptyLabel;
+      selectEl.appendChild(optEmpty);
+    }
+    (values || []).forEach(function (v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    if (current && values && values.indexOf(current) !== -1) selectEl.value = current;
   }
 
   function handleCredentialResponse(response) {
@@ -424,13 +486,17 @@
       card.innerHTML =
         '<div class="course-name"></div>' +
         '<div class="course-meta">' +
-        '開催日：<span class="c-date"></span><br>' +
-        '担当理事：<span class="c-director"></span>' +
+        '開催日：<span class="c-date"></span>' + (c.startTime ? '（<span class="c-time"></span>）' : '') + '<br>' +
+        '開催場所：<span class="c-venue"></span><br>' +
+        '担当理事：<span class="c-director"></span>' + (c.department ? '（<span class="c-department"></span>）' : '') +
         '</div>' +
         '<span class="status-badge"></span>';
       card.querySelector('.course-name').textContent = c.name || '(名称未設定)';
-      card.querySelector('.c-date').textContent = c.eventDate || '未定';
+      card.querySelector('.c-date').textContent = c.eventDate ? withWeekday(c.eventDate) : '未定';
+      if (c.startTime) { card.querySelector('.c-time').textContent = c.startTime + (c.endTime ? '〜' + c.endTime : ''); }
+      card.querySelector('.c-venue').textContent = c.venue || '未定';
       card.querySelector('.c-director').textContent = c.directorName || '未定';
+      if (c.department) { card.querySelector('.c-department').textContent = c.department; }
       var badge = card.querySelector('.status-badge');
       badge.textContent = c.status || '準備中';
       badge.className = 'status-badge status-' + (c.status || '準備中');
@@ -444,7 +510,12 @@
     $('courseModalTitle').textContent = course ? '講座を編集' : '新しい講座を追加';
     $('c-name').value = course ? course.name : '';
     $('c-eventDate').value = course ? course.eventDate : '';
+    $('c-venue').value = course ? (course.venue || '') : '';
+    $('c-startTime').value = course ? (course.startTime || '') : '';
+    $('c-endTime').value = course ? (course.endTime || '') : '';
     $('c-directorName').value = course ? course.directorName : '';
+    $('c-department').value = course ? (course.department || '') : '';
+    $('c-format').value = course ? (course.format || '座学') : '座学';
     $('c-status').value = course ? course.status : '準備中';
     $('courseModal').classList.remove('hidden');
   }
@@ -458,7 +529,12 @@
       id: editingCourseId,
       name: $('c-name').value,
       eventDate: $('c-eventDate').value,
+      startTime: $('c-startTime').value,
+      endTime: $('c-endTime').value,
+      venue: $('c-venue').value,
       directorName: $('c-directorName').value,
+      department: $('c-department').value,
+      format: $('c-format').value,
       status: $('c-status').value
     };
     if (!payload.name) { showToast('講座名を入力してください'); return; }

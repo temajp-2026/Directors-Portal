@@ -44,7 +44,7 @@
     font-family: 'Shippori Mincho', serif; font-size: 26px; font-weight: 700; letter-spacing: 0.1em;
     text-align: center; color: #152744; margin: 0 0 10px; padding-bottom: 16px; border-bottom: 3px solid #152744;
   }
-  .doc-meta { display: flex; justify-content: space-between; font-size: 12px; color: #5b6779; margin: 14px 0 26px; }
+  .doc-meta { display: flex; justify-content: flex-end; font-size: 12px; color: #5b6779; margin: 14px 0 26px; }
   .recipient { font-size: 18px; font-weight: 700; color: #152744; border-bottom: 1px solid #152744; padding-bottom: 10px; margin-bottom: 22px; }
   .lead-text { font-size: 13px; line-height: 1.9; color: #33415a; margin: 0 0 6px; }
 
@@ -55,8 +55,8 @@
 
   table.doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   table.doc-table th, table.doc-table td { border: 1px solid #c7cede; padding: 9px 13px; text-align: left; vertical-align: top; }
-  table.doc-table th { width: 32%; background: #f3f5fa; color: #152744; font-weight: 600; }
-  table.doc-table tr.total-row th, table.doc-table tr.total-row td { background: #152744; color: #ffffff; font-weight: 700; font-size: 14px; }
+  table.doc-table th { width: 38%; background: #f3f5fa; color: #152744; font-weight: 600; }
+  table.doc-table tr.total-row th, table.doc-table tr.total-row td { background: #152744; color: #ffffff; font-weight: 700; font-size: 13px; white-space: nowrap; }
   .amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
 
   .equipment-box { border: 1px solid #c7cede; border-top: none; padding: 14px 16px; font-size: 13px; line-height: 1.7; }
@@ -70,25 +70,22 @@
   .full-span { grid-column: 1 / -1; }
   .field label, .field .field-label { font-size: 12px; font-weight: 700; color: #3c4a5f; display: block; margin-bottom: 5px; }
 
-  input[type="text"], input[type="date"], select {
+  input[type="text"], input[type="date"], select, textarea {
     width: 100%; font-family: 'BIZ UDPGothic', system-ui, sans-serif; font-size: 13px;
     padding: 8px 10px; border: 1px solid #c7cede; border-radius: 3px; background: #ffffff; color: #1c2b3a;
   }
+  textarea { resize: vertical; }
   input:focus, select:focus { outline: 2px solid #1e3a63; outline-offset: 1px; }
   input:disabled, select:disabled { background: #f4f6f9; color: #5b6779; }
 
   .radio-group { display: flex; gap: 18px; align-items: center; font-size: 13px; flex-wrap: wrap; }
   .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; color: #1c2b3a; }
 
-  .signature-row { display: flex; justify-content: flex-end; align-items: flex-end; gap: 24px; margin-top: 26px; }
-  .signature-fields { font-size: 12px; color: #3c4a5f; text-align: right; }
+  .signature-row { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .signature-fields { font-size: 12px; color: #3c4a5f; text-align: right; width: 100%; max-width: 360px; }
+  .signature-fields .sig-note { text-align: left; font-size: 12px; color: #5b6779; margin: 0 0 12px; }
   .signature-fields .sig-line { margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .signature-fields input { width: 190px; display: inline-block; }
-  .seal-box {
-    width: 56px; height: 56px; border: 1px solid #8b98ad; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; font-size: 11px; color: #8b98ad;
-    font-family: 'Shippori Mincho', serif; flex-shrink: 0;
-  }
 
   .lecturer-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 
@@ -162,7 +159,6 @@
       <div class="doc-title">講師依頼　請書　兼　請求書</div>
       <div class="doc-meta">
         <span>作成日：<span id="doc-createdDate">—</span></span>
-        <span>提出先：主催者事務局</span>
       </div>
       <div class="recipient">特定非営利活動法人　日本繊維商品めんてなんす研究会　殿</div>
 
@@ -176,10 +172,11 @@
           <tr><th>講演テーマ</th><td id="doc-topic">未定</td></tr>
           <tr><th>研修形式</th><td id="doc-format">未定</td></tr>
           <tr><th>担当理事</th><td id="doc-director">未定</td></tr>
+          <tr><th>担当科</th><td id="doc-department">未定</td></tr>
         </tbody>
       </table>
 
-      <div class="section-title">2. 謝礼・お支払い金額</div>
+      <div class="section-title">2. 謝礼</div>
       <table class="doc-table">
         <tbody>
           <tr><th>謝礼本体金額（税抜）</th><td class="amount-cell" id="doc-fee">¥0</td></tr>
@@ -227,6 +224,19 @@
           </div>
         </div>
 
+        <div id="withholdingIndividualFields" class="field-grid hidden" style="margin-top: 14px;">
+          <div class="field"><span class="field-label">お名前</span><input type="text" id="lec-name" aria-label="お名前"></div>
+          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-contact" aria-label="ご連絡先"></div>
+          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-address" aria-label="ご住所"></div>
+        </div>
+
+        <div id="withholdingCorporateFields" class="field-grid hidden" style="margin-top: 14px;">
+          <div class="field"><span class="field-label">会社名</span><input type="text" id="lec-companyName" aria-label="会社名"></div>
+          <div class="field"><span class="field-label">ご連絡先（電話番号等）</span><input type="text" id="lec-companyContact" aria-label="ご連絡先"></div>
+          <div class="field full-span"><span class="field-label">ご住所</span><input type="text" id="lec-companyAddress" aria-label="ご住所"></div>
+          <div class="field full-span"><span class="field-label">メールアドレス</span><input type="text" id="lec-companyEmail" aria-label="メールアドレス"></div>
+        </div>
+
         <div class="field-grid" style="margin-top: 14px;">
           <div class="field"><span class="field-label">振込先金融機関名</span><input type="text" id="lec-bankName" aria-label="金融機関名"></div>
           <div class="field"><span class="field-label">支店名</span><input type="text" id="lec-branchName" aria-label="支店名"></div>
@@ -250,14 +260,32 @@
             </div>
           </div>
         </div>
+
+        <div id="archiveConsentWrap" class="field-grid single hidden" style="margin-top: 14px;">
+          <div class="field">
+            <span class="field-label">講座終了後、アーカイブ配信の許諾</span>
+            <div class="radio-group">
+              <label><input type="radio" name="archiveConsent" value="agree"> 承諾する</label>
+              <label><input type="radio" name="archiveConsent" value="conditional"> 条件による</label>
+              <label><input type="radio" name="archiveConsent" value="decline"> お断りする</label>
+            </div>
+          </div>
+        </div>
+        <div id="archiveConditionWrap" class="field-grid single hidden" style="margin-top: 10px;">
+          <div class="field">
+            <span class="field-label">条件（自由にご記入ください）</span>
+            <textarea id="lec-archiveConsentCondition" rows="2" aria-label="アーカイブ配信の条件"></textarea>
+          </div>
+        </div>
       </div>
 
+      <div class="section-title">5. 署名</div>
       <div class="signature-row">
         <div class="signature-fields">
+          <p class="sig-note">上記内容を確認のうえ、下記のとおり署名します。</p>
           <div class="sig-line">提出日：<input type="date" id="lec-submitDate" aria-label="提出日"></div>
-          <div class="sig-line">社名／氏名：<input type="text" id="lec-signerName" placeholder="署名をご記入ください" aria-label="社名または氏名"></div>
+          <div class="sig-line">署名（社名／氏名）：<input type="text" id="lec-signerName" placeholder="署名をご記入ください" aria-label="社名または氏名"></div>
         </div>
-        <div class="seal-box">印</div>
       </div>
 
       <div id="confirmedNote" class="confirmed-note hidden no-print">この内容で確定済みです。内容を修正した場合は、もう一度「内容を確定する」を押してください。</div>
@@ -296,11 +324,15 @@
   }
 
   function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP'); }
-  function jpDate(s) {
+  var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  function jpDate(s, withWeekday) {
     if (!s) return '未定';
     var parts = String(s).split('-');
     if (parts.length !== 3) return s;
-    return parts[0] + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+    var base = parts[0] + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+    if (!withWeekday) return base;
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return base + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
   }
   function calcAmounts(fee, withholdingType) {
     fee = Math.max(0, Math.round(Number(fee) || 0));
@@ -325,12 +357,13 @@
 
   function renderInvoice(inv) {
     $('doc-createdDate').textContent = jpDate(inv.createdAt ? String(inv.createdAt).slice(0, 10) : '');
-    $('doc-eventDate').textContent = jpDate(inv.eventDate);
+    $('doc-eventDate').textContent = jpDate(inv.eventDate, true);
     $('doc-time').textContent = (inv.startTime || inv.endTime) ? (inv.startTime || '未定') + '〜' + (inv.endTime || '未定') : '未定';
     $('doc-venue').textContent = inv.venue || '未定';
     $('doc-topic').textContent = inv.topic || '未定';
     $('doc-format').textContent = inv.format || '未定';
     $('doc-director').textContent = inv.directorName || '未定';
+    $('doc-department').textContent = inv.department || '未定';
 
     var withholdingType = inv.withholdingType || '個人';
     var c = calcAmounts(inv.feeExTax, withholdingType);
@@ -353,6 +386,15 @@
     toggleInvoiceNumberField();
 
     document.querySelector('input[name="withholdingType"][value="' + (inv.withholdingType || '個人') + '"]').checked = true;
+    $('lec-name').value = inv.lecturerName || '';
+    $('lec-address').value = inv.lecturerAddress || '';
+    $('lec-contact').value = inv.lecturerContact || '';
+    $('lec-companyName').value = inv.lecturerCompanyName || '';
+    $('lec-companyAddress').value = inv.lecturerCompanyAddress || '';
+    $('lec-companyContact').value = inv.lecturerCompanyContact || '';
+    $('lec-companyEmail').value = inv.lecturerCompanyEmail || '';
+    toggleWithholdingFields();
+
     $('lec-bankName').value = inv.bankName || '';
     $('lec-branchName').value = inv.branchName || '';
     $('lec-accountType').value = inv.accountType || '普通';
@@ -361,6 +403,13 @@
 
     if (inv.photoConsent === 'agree') { document.querySelector('input[name="photoConsent"][value="agree"]').checked = true; }
     else if (inv.photoConsent === 'decline') { document.querySelector('input[name="photoConsent"][value="decline"]').checked = true; }
+
+    $('archiveConsentWrap').classList.toggle('hidden', !inv.isSkillUpCourse);
+    if (inv.archiveConsent === 'agree' || inv.archiveConsent === 'conditional' || inv.archiveConsent === 'decline') {
+      document.querySelector('input[name="archiveConsent"][value="' + inv.archiveConsent + '"]').checked = true;
+    }
+    $('lec-archiveConsentCondition').value = inv.archiveConsentCondition || '';
+    toggleArchiveConditionField();
 
     $('lec-submitDate').value = inv.submitDate || new Date().toISOString().slice(0, 10);
     $('lec-signerName').value = inv.signerName || '';
@@ -372,18 +421,37 @@
     $('invoiceNumberWrap').classList.toggle('hidden', !$('lec-invoice-yes').checked);
   }
 
+  function toggleWithholdingFields() {
+    var type = radioValue('withholdingType') || '個人';
+    $('withholdingIndividualFields').classList.toggle('hidden', type !== '個人');
+    $('withholdingCorporateFields').classList.toggle('hidden', type !== '法人');
+  }
+
+  function toggleArchiveConditionField() {
+    $('archiveConditionWrap').classList.toggle('hidden', radioValue('archiveConsent') !== 'conditional');
+  }
+
   function submitConfirm() {
     var payload = {
       id: invoiceId,
       invoiceRegistered: radioValue('invoiceRegistered'),
       invoiceNumber: $('lec-invoiceNumber').value,
       withholdingType: radioValue('withholdingType') || '個人',
+      lecturerName: $('lec-name').value,
+      lecturerAddress: $('lec-address').value,
+      lecturerContact: $('lec-contact').value,
+      lecturerCompanyName: $('lec-companyName').value,
+      lecturerCompanyAddress: $('lec-companyAddress').value,
+      lecturerCompanyContact: $('lec-companyContact').value,
+      lecturerCompanyEmail: $('lec-companyEmail').value,
       bankName: $('lec-bankName').value,
       branchName: $('lec-branchName').value,
       accountType: $('lec-accountType').value,
       accountNumber: $('lec-accountNumber').value,
       accountHolderKana: $('lec-accountHolderKana').value,
       photoConsent: radioValue('photoConsent'),
+      archiveConsent: radioValue('archiveConsent'),
+      archiveConsentCondition: $('lec-archiveConsentCondition').value,
       submitDate: $('lec-submitDate').value,
       signerName: $('lec-signerName').value
     };
@@ -412,6 +480,12 @@
 
     document.querySelectorAll('input[name="invoiceRegistered"]').forEach(function (r) {
       r.addEventListener('change', toggleInvoiceNumberField);
+    });
+    document.querySelectorAll('input[name="withholdingType"]').forEach(function (r) {
+      r.addEventListener('change', toggleWithholdingFields);
+    });
+    document.querySelectorAll('input[name="archiveConsent"]').forEach(function (r) {
+      r.addEventListener('change', toggleArchiveConditionField);
     });
     $('btnPrint').addEventListener('click', function () { window.print(); });
     $('btnConfirm').addEventListener('click', submitConfirm);

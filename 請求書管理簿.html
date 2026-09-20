@@ -90,6 +90,19 @@
   .status-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
   .status-作成済み { background: #e7edfb; color: #1e3a63; }
   .status-確定済み { background: #e3f3e9; color: #226b3f; }
+  .status-支払い済み { background: #dff3e0; color: #1a7a34; }
+  .status-取消 { background: #f1f2f5; color: #7a8296; text-decoration: line-through; }
+  tr.voided { opacity: 0.55; }
+
+  .alert-pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin: 4px 4px 0 0; }
+  .alert-pill.warn { background: #fff4d6; color: #8a6100; }
+  .alert-pill.danger { background: #fdecec; color: #a02b2b; }
+
+  .missing-banner { background: #fff8ec; border: 1px solid #e8c78a; border-radius: 5px; padding: 14px 16px; margin-bottom: 18px; font-size: 12.5px; color: #7a4b12; }
+  .missing-banner .missing-title { font-weight: 700; margin-bottom: 8px; }
+  .missing-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #f0dfb8; }
+  .missing-row:first-of-type { border-top: none; }
+  .updated-meta { font-size: 11px; color: #8892a3; line-height: 1.5; }
 
   .empty-state { text-align: center; color: #6b7890; font-size: 13px; padding: 40px 0; background: #ffffff; border: 1px solid #d7dee9; }
 
@@ -188,6 +201,11 @@
       <button type="button" class="btn btn-primary" id="btnAddInvoice">＋ 新規作成</button>
     </div>
 
+    <div id="missingInvoiceBanner" class="missing-banner hidden">
+      <div class="missing-title">⚠ 請求書が未作成の講座があります</div>
+      <div id="missingInvoiceList"></div>
+    </div>
+
     <table class="list-table" id="invoiceTable">
       <thead>
         <tr>
@@ -196,6 +214,7 @@
           <th>開催日</th>
           <th>謝礼(税抜)</th>
           <th>ステータス</th>
+          <th>最終更新</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -208,8 +227,15 @@
 <!-- 新規作成モーダル -->
 <div id="invoiceModal" class="modal-overlay hidden">
   <div class="modal-panel">
-    <div class="modal-title">請書兼請求書を新規作成</div>
+    <div class="modal-title" id="invoiceModalTitle">請書兼請求書を新規作成</div>
     <div class="modal-sub">必要事項を入力して保存すると、講師の方に送る専用リンクが発行されます。</div>
+
+    <div class="field-grid single">
+      <div class="field">
+        <label for="f-course">講座から選択（任意・選ぶと下の項目に自動入力されます）</label>
+        <select id="f-course"><option value="">－ 講座を選択しない（手入力） －</option></select>
+      </div>
+    </div>
 
     <div class="modal-section-title">① 研修・講演概要</div>
     <div class="field-grid">
@@ -221,12 +247,11 @@
       <div class="field full-span"><label for="f-topic">講演テーマ</label><input type="text" id="f-topic" placeholder="例）繊維製品の適切な取り扱いについて"></div>
       <div class="field">
         <label for="f-format">研修形式</label>
-        <select id="f-format">
-          <option value="座学">座学</option>
-          <option value="見学">見学</option>
-          <option value="実技">実技</option>
-          <option value="その他">その他</option>
-        </select>
+        <select id="f-format"></select>
+      </div>
+      <div class="field">
+        <label for="f-department">担当科</label>
+        <select id="f-department"><option value="">（未設定）</option></select>
       </div>
     </div>
 
@@ -295,6 +320,12 @@
   var currentUser = null;
   var currentIdToken = null;
   var invoices = [];
+  var courses = [];
+  var departments = [];
+  var pulldownOptions = {};
+  var appSettings = { createAlertDays: 40, unrespondedAlertDays: 14, paymentWarningDays: 2 };
+  var editingInvoiceId = null;
+  var paymentDueDateTouched = false;
 
   // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、
   // 同じタブ内で移動してきた場合は再ログインを求めないようにする。
@@ -332,6 +363,15 @@
 
   function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP'); }
 
+  var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  function withWeekday(dateStr) {
+    if (!dateStr) return '';
+    var parts = String(dateStr).split('-');
+    if (parts.length !== 3) return dateStr;
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return dateStr + '（' + WEEKDAY_LABELS[d.getDay()] + '）';
+  }
+
   function calcAmounts(fee, withholdingType) {
     fee = Math.max(0, Math.round(Number(fee) || 0));
     var tax = Math.floor(fee * 0.10);
@@ -346,6 +386,100 @@
     $('calc-subtotal').textContent = yen(c.subtotal);
     $('calc-withholding').textContent = yen(c.withholding);
     $('calc-total').textContent = yen(c.total);
+  }
+
+  function fillSelect(selectEl, values, emptyLabel) {
+    if (!selectEl) return;
+    var current = selectEl.value;
+    selectEl.innerHTML = '';
+    if (emptyLabel !== null && emptyLabel !== undefined) {
+      var optEmpty = document.createElement('option');
+      optEmpty.value = '';
+      optEmpty.textContent = emptyLabel;
+      selectEl.appendChild(optEmpty);
+    }
+    (values || []).forEach(function (v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    if (current && values && values.indexOf(current) !== -1) selectEl.value = current;
+  }
+
+  function renderCourseSelect() {
+    var sel = $('f-course');
+    var current = sel.value;
+    sel.innerHTML = '';
+    var optEmpty = document.createElement('option');
+    optEmpty.value = '';
+    optEmpty.textContent = '－ 講座を選択しない（手入力） －';
+    sel.appendChild(optEmpty);
+    courses.forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.eventDate ? withWeekday(c.eventDate) : '未定') + '　' + (c.name || '(名称未設定)');
+      sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+  }
+
+  /** 講座マスタ・担当科・プルダウン選択肢・アラート設定をSSから取得する */
+  function loadMasterData() {
+    return Promise.all([
+      callApi('listCourses'), callApi('listDepartments'), callApi('listOptions'), callApi('getSettings')
+    ]).then(function (results) {
+      if (results[0] && results[0].ok) { courses = results[0].data || []; }
+      if (results[1] && results[1].ok) { departments = results[1].data || []; }
+      if (results[2] && results[2].ok) { pulldownOptions = results[2].data || {}; }
+      if (results[3] && results[3].ok) { appSettings = results[3].data || appSettings; }
+      fillSelect($('f-department'), departments.map(function (d) { return d.name; }), '（未設定）');
+      fillSelect($('f-format'), pulldownOptions['研修形式'] || ['座学'], null);
+      renderCourseSelect();
+      renderList();
+    }).catch(function () {});
+  }
+
+  function daysUntil(dateStr) {
+    if (!dateStr) return null;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d - today) / 86400000);
+  }
+
+  /** 支払予定日のデフォルト計算：開催日が25日までならその月末、それ以外は翌月末 */
+  function calcDefaultPaymentDueDate(eventDateStr) {
+    if (!eventDateStr) return '';
+    var parts = eventDateStr.split('-');
+    var y = Number(parts[0]), m = Number(parts[1]) - 1, day = Number(parts[2]);
+    var targetMonth = day <= 25 ? m : m + 1;
+    var lastDay = new Date(y, targetMonth + 1, 0);
+    var yyyy = lastDay.getFullYear();
+    var mm = String(lastDay.getMonth() + 1).padStart(2, '0');
+    var dd = String(lastDay.getDate()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd;
+  }
+
+  function applyDefaultPaymentDueDate() {
+    if (paymentDueDateTouched) return;
+    $('f-paymentDueDate').value = calcDefaultPaymentDueDate($('f-eventDate').value);
+  }
+
+  function onCourseSelected() {
+    var courseId = $('f-course').value;
+    if (!courseId) return;
+    var c = courses.filter(function (x) { return x.id === courseId; })[0];
+    if (!c) return;
+    $('f-eventDate').value = c.eventDate || '';
+    $('f-startTime').value = c.startTime || '';
+    $('f-endTime').value = c.endTime || '';
+    $('f-venue').value = c.venue || '';
+    $('f-topic').value = c.name || '';
+    if (c.format) $('f-format').value = c.format;
+    $('f-directorName').value = c.directorName || '';
+    if (c.department) $('f-department').value = c.department;
+    paymentDueDateTouched = false;
+    applyDefaultPaymentDueDate();
   }
 
   /* ---------- ログイン ---------- */
@@ -370,6 +504,7 @@
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     renderList();
+    loadMasterData();
   }
 
   function handleCredentialResponse(response) {
@@ -462,7 +597,83 @@
     } catch (e) { fail(); }
   }
 
+  function computeInvoiceAlerts(inv) {
+    var alerts = [];
+    if (inv.status === '取消') return alerts;
+    if (inv.status === '作成済み') {
+      var du = daysUntil(inv.eventDate);
+      if (du !== null && du <= appSettings.unrespondedAlertDays) {
+        alerts.push({ level: 'danger', label: '講師側未返信' });
+      }
+    }
+    if (inv.status === '確定済み' && inv.paymentDueDate) {
+      var dd = daysUntil(inv.paymentDueDate);
+      if (dd !== null) {
+        if (dd < 0) alerts.push({ level: 'danger', label: '支払期限超過' });
+        else if (dd <= appSettings.paymentWarningDays) alerts.push({ level: 'warn', label: '支払期限接近' });
+      }
+    }
+    return alerts;
+  }
+
+  function renderMissingInvoiceBanner() {
+    var linkedCourseIds = {};
+    invoices.forEach(function (inv) {
+      if (inv.status !== '取消' && inv.courseId) linkedCourseIds[inv.courseId] = true;
+    });
+    var missing = courses.filter(function (c) {
+      if (c.status === '中止') return false;
+      if (linkedCourseIds[c.id]) return false;
+      var du = daysUntil(c.eventDate);
+      return du !== null && du <= appSettings.createAlertDays;
+    });
+    var banner = $('missingInvoiceBanner');
+    var list = $('missingInvoiceList');
+    if (!missing.length) { banner.classList.add('hidden'); return; }
+    banner.classList.remove('hidden');
+    list.innerHTML = '';
+    missing.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'missing-row';
+      var label = document.createElement('span');
+      label.textContent = (c.name || '(名称未設定)') + '　開催日：' + (c.eventDate ? withWeekday(c.eventDate) : '未定');
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-outline';
+      btn.textContent = '＋この講座で作成';
+      btn.addEventListener('click', function () {
+        openInvoiceModal(null);
+        $('f-course').value = c.id;
+        onCourseSelected();
+      });
+      row.appendChild(label);
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  }
+
+  function markPaid(inv) {
+    if (!confirm('「' + (inv.topic || '') + '」を支払い済みにしますか？')) return;
+    callApi('markInvoicePaid', { id: inv.id }).then(function (res) {
+      if (!res.ok) { showToast('更新に失敗しました：' + res.error); return; }
+      showToast('支払い済みにしました');
+      return callApi('listInvoices');
+    }).then(function (res) { if (res && res.ok) { invoices = res.data; renderList(); } });
+  }
+
+  function voidInv(inv) {
+    var reason = prompt('取消の理由があれば入力してください（空欄でも可）。\n取消後も記録は一覧に残ります（不正防止のため完全には削除されません）。', '');
+    if (reason === null) return; // キャンセル
+    callApi('voidInvoice', { id: inv.id, reason: reason }).then(function (res) {
+      if (!res.ok) { showToast('取消に失敗しました：' + res.error); return; }
+      showToast('取消しました');
+      return callApi('listInvoices');
+    }).then(function (res) { if (res && res.ok) { invoices = res.data; renderList(); } });
+  }
+
   function renderList() {
+    renderMissingInvoiceBanner();
+
     var tbody = $('invoiceTbody');
     tbody.innerHTML = '';
     if (!invoices.length) {
@@ -475,6 +686,7 @@
 
     invoices.forEach(function (inv) {
       var tr = document.createElement('tr');
+      if (inv.status === '取消') tr.className = 'voided';
 
       var tdTopic = document.createElement('td');
       tdTopic.textContent = inv.topic || '(講演テーマ未設定)';
@@ -485,7 +697,7 @@
       tr.appendChild(tdDirector);
 
       var tdDate = document.createElement('td');
-      tdDate.textContent = inv.eventDate || '未定';
+      tdDate.textContent = inv.eventDate ? withWeekday(inv.eventDate) : '未定';
       tr.appendChild(tdDate);
 
       var tdFee = document.createElement('td');
@@ -498,7 +710,24 @@
       badge.className = 'status-badge status-' + (inv.status || '作成済み');
       badge.textContent = inv.status || '作成済み';
       tdStatus.appendChild(badge);
+      computeInvoiceAlerts(inv).forEach(function (a) {
+        var pill = document.createElement('span');
+        pill.className = 'alert-pill ' + a.level;
+        pill.textContent = a.label;
+        tdStatus.appendChild(pill);
+      });
       tr.appendChild(tdStatus);
+
+      var tdUpdated = document.createElement('td');
+      var updWho = document.createElement('div');
+      updWho.className = 'updated-meta';
+      updWho.textContent = inv.updatedBy || inv.createdBy || '-';
+      var updWhen = document.createElement('div');
+      updWhen.className = 'updated-meta';
+      updWhen.textContent = inv.updatedAt || '';
+      tdUpdated.appendChild(updWho);
+      tdUpdated.appendChild(updWhen);
+      tr.appendChild(tdUpdated);
 
       var tdActions = document.createElement('td');
       var actionsWrap = document.createElement('div');
@@ -522,6 +751,33 @@
       });
       actionsWrap.appendChild(btnCopy);
 
+      if (inv.status !== '取消') {
+        var btnEdit = document.createElement('button');
+        btnEdit.type = 'button';
+        btnEdit.className = 'btn btn-outline';
+        btnEdit.textContent = '編集';
+        btnEdit.addEventListener('click', function () { openInvoiceModal(inv); });
+        actionsWrap.appendChild(btnEdit);
+      }
+
+      if (inv.status === '確定済み') {
+        var btnPaid = document.createElement('button');
+        btnPaid.type = 'button';
+        btnPaid.className = 'btn btn-outline';
+        btnPaid.textContent = '支払い済みにする';
+        btnPaid.addEventListener('click', function () { markPaid(inv); });
+        actionsWrap.appendChild(btnPaid);
+      }
+
+      if (inv.status !== '取消') {
+        var btnVoid = document.createElement('button');
+        btnVoid.type = 'button';
+        btnVoid.className = 'btn btn-cancel';
+        btnVoid.textContent = '取消';
+        btnVoid.addEventListener('click', function () { voidInv(inv); });
+        actionsWrap.appendChild(btnVoid);
+      }
+
       tdActions.appendChild(actionsWrap);
       tr.appendChild(tdActions);
 
@@ -529,24 +785,30 @@
     });
   }
 
-  /* ---------- 新規作成モーダル ---------- */
-  function openModal() {
-    $('f-eventDate').value = '';
-    $('f-startTime').value = '';
-    $('f-endTime').value = '';
-    $('f-venue').value = '';
-    $('f-topic').value = '';
-    $('f-format').value = '座学';
-    $('f-directorName').value = '';
-    $('f-fee').value = 0;
-    document.querySelector('input[name="travelHandling"][value="別途支給"]').checked = true;
-    $('f-paymentMethod').value = '銀行振込';
-    $('f-paymentDueDate').value = '';
-    ['projector', 'pc', 'mic', 'whiteboard', 'greenroom', 'screen'].forEach(function (k) { $('eq-' + k).checked = false; });
+  /* ---------- 新規作成／編集モーダル ---------- */
+  function openInvoiceModal(inv) {
+    editingInvoiceId = inv ? inv.id : null;
+    paymentDueDateTouched = !!(inv && inv.paymentDueDate);
+    $('invoiceModalTitle').textContent = inv ? '請書兼請求書を編集' : '請書兼請求書を新規作成';
+    $('f-course').value = (inv && inv.courseId) || '';
+    $('f-eventDate').value = inv ? (inv.eventDate || '') : '';
+    $('f-startTime').value = inv ? (inv.startTime || '') : '';
+    $('f-endTime').value = inv ? (inv.endTime || '') : '';
+    $('f-venue').value = inv ? (inv.venue || '') : '';
+    $('f-topic').value = inv ? (inv.topic || '') : '';
+    $('f-format').value = inv ? (inv.format || '座学') : '座学';
+    $('f-department').value = inv ? (inv.department || '') : '';
+    $('f-directorName').value = inv ? (inv.directorName || '') : '';
+    $('f-fee').value = inv ? (inv.feeExTax || 0) : 0;
+    document.querySelector('input[name="travelHandling"][value="' + ((inv && inv.travelHandling) || '別途支給') + '"]').checked = true;
+    $('f-paymentMethod').value = inv ? (inv.paymentMethod || '銀行振込') : '銀行振込';
+    $('f-paymentDueDate').value = inv ? (inv.paymentDueDate || '') : '';
+    var eq = (inv && inv.equipment) || {};
+    ['projector', 'pc', 'mic', 'whiteboard', 'greenroom', 'screen'].forEach(function (k) { $('eq-' + k).checked = !!eq[k]; });
     updateModalCalc();
     $('linkResult').classList.add('hidden');
     $('btnInvoiceSave').disabled = false;
-    $('btnInvoiceSave').textContent = '保存してリンクを発行';
+    $('btnInvoiceSave').textContent = inv ? '保存する' : '保存してリンクを発行';
     $('invoiceModal').classList.remove('hidden');
   }
 
@@ -561,6 +823,9 @@
 
   function saveInvoice() {
     var payload = {
+      id: editingInvoiceId,
+      courseId: $('f-course').value,
+      department: $('f-department').value,
       eventDate: $('f-eventDate').value,
       startTime: $('f-startTime').value,
       endTime: $('f-endTime').value,
@@ -587,18 +852,22 @@
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中…';
 
-    callApi('createInvoice', payload).then(function (res) {
+    var action = editingInvoiceId ? 'updateInvoiceDirector' : 'createInvoice';
+    callApi(action, payload).then(function (res) {
       if (!res.ok) { showToast('保存に失敗しました：' + res.error); return; }
-      var link = lecturerLinkFor(res.data.id);
-      $('generatedLink').value = link;
-      $('linkResult').classList.remove('hidden');
-      showToast('作成しました');
+      if (!editingInvoiceId) {
+        var link = lecturerLinkFor(res.data.id);
+        $('generatedLink').value = link;
+        $('linkResult').classList.remove('hidden');
+      }
+      showToast(editingInvoiceId ? '更新しました' : '作成しました');
+      if (editingInvoiceId) { closeModal(); }
       return callApi('listInvoices');
     }).then(function (res) {
       if (res && res.ok) { invoices = res.data; renderList(); }
     }).finally(function () {
       saveBtn.disabled = false;
-      saveBtn.textContent = '保存してリンクを発行';
+      saveBtn.textContent = editingInvoiceId ? '保存する' : '保存してリンクを発行';
     });
   }
 
@@ -617,10 +886,13 @@
 
     $('btnLogout').addEventListener('click', logout);
     $('btnDeniedLogout').addEventListener('click', logout);
-    $('btnAddInvoice').addEventListener('click', openModal);
+    $('btnAddInvoice').addEventListener('click', function () { openInvoiceModal(null); });
     $('btnInvoiceCancel').addEventListener('click', closeModal);
     $('btnInvoiceSave').addEventListener('click', saveInvoice);
     $('f-fee').addEventListener('input', updateModalCalc);
+    $('f-course').addEventListener('change', onCourseSelected);
+    $('f-eventDate').addEventListener('change', applyDefaultPaymentDueDate);
+    $('f-paymentDueDate').addEventListener('input', function () { paymentDueDateTouched = true; });
     $('btnCopyGeneratedLink').addEventListener('click', function () {
       copyText($('generatedLink').value, 'リンクをコピーしました');
     });
