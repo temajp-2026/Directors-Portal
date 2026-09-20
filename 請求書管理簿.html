@@ -23,6 +23,15 @@
     border: 1px solid #f0b8b8; border-radius: 4px; padding: 10px 12px; display: none;
   }
 
+  .auth-check-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: #5b6779; font-size: 13px; }
+  .denied-card {
+    background: #ffffff; border-radius: 8px; box-shadow: 0 6px 24px rgba(21,39,68,0.14);
+    padding: 40px 36px; text-align: center; max-width: 400px; width: 100%;
+  }
+  .denied-title { font-family: 'Shippori Mincho', serif; font-size: 18px; font-weight: 700; color: #152744; margin: 0 0 10px; }
+  .denied-sub { font-size: 12.5px; color: #5b6779; margin: 0 0 22px; line-height: 1.8; }
+  .denied-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
   .app-header {
     background: #152744; color: #ffffff; padding: 14px 24px;
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
@@ -117,12 +126,25 @@
 </head>
 <body>
 
-<div id="loginShell" class="login-shell">
+<div id="authCheckShell" class="auth-check-shell">確認しています…</div>
+
+<div id="loginShell" class="login-shell hidden">
   <div class="login-card">
     <div class="login-title">請求書管理簿</div>
     <p class="login-sub">特定非営利活動法人　日本繊維商品めんてなんす研究会<br>Googleアカウントでログインしてください。<br>あらかじめ登録された理事のみ利用できます。</p>
     <div id="gsiButton" style="display:flex; justify-content:center;"></div>
     <div id="loginError" class="login-error"></div>
+  </div>
+</div>
+
+<div id="deniedShell" class="login-shell hidden">
+  <div class="denied-card">
+    <div class="denied-title">閲覧権限がありません</div>
+    <p class="denied-sub">このGoogleアカウントには、請求書管理簿を利用する権限が設定されていません。<br>必要な場合は事務局(管理担当理事)にご連絡ください。</p>
+    <div class="denied-actions">
+      <a class="btn btn-outline" href="理事ポータル_index.html" style="text-decoration:none; display:inline-block;">ポータルへ戻る</a>
+      <button type="button" class="btn btn-cancel" id="btnDeniedLogout">別のアカウントでログイン</button>
+    </div>
   </div>
 </div>
 
@@ -305,11 +327,40 @@
   }
 
   /* ---------- ログイン ---------- */
+  function showLoginShell() {
+    $('authCheckShell').classList.add('hidden');
+    $('deniedShell').classList.add('hidden');
+    $('appShell').classList.add('hidden');
+    $('loginShell').classList.remove('hidden');
+  }
+
+  function showDeniedShell() {
+    $('authCheckShell').classList.add('hidden');
+    $('loginShell').classList.add('hidden');
+    $('appShell').classList.add('hidden');
+    $('deniedShell').classList.remove('hidden');
+  }
+
+  function showAppShell() {
+    $('authCheckShell').classList.add('hidden');
+    $('loginShell').classList.add('hidden');
+    $('deniedShell').classList.add('hidden');
+    $('appShell').classList.remove('hidden');
+    $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    renderList();
+  }
+
   function handleCredentialResponse(response) {
     currentIdToken = response.credential;
     $('loginError').style.display = 'none';
     callApi('listInvoices').then(function (res) {
       if (!res.ok) {
+        if (res.error === 'invoice_access_denied') {
+          currentUser = res.user;
+          saveAuthToStorage();
+          showDeniedShell();
+          return;
+        }
         var msg = res.error === 'not_allowed'
           ? 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。'
           : 'ログインに失敗しました。時間をおいて再度お試しください。';
@@ -322,10 +373,7 @@
       currentUser = res.user;
       invoices = res.data || [];
       saveAuthToStorage();
-      $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
-      $('loginShell').classList.add('hidden');
-      $('appShell').classList.remove('hidden');
-      renderList();
+      showAppShell();
     }).catch(function () {
       var el = $('loginError');
       el.textContent = 'サーバーに接続できませんでした。GAS_API_URLの設定をご確認ください。';
@@ -341,23 +389,27 @@
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
     }
-    $('appShell').classList.add('hidden');
-    $('loginShell').classList.remove('hidden');
+    showLoginShell();
   }
 
   function tryAutoLogin() {
     var cached = loadAuthFromStorage();
-    if (!cached || !cached.idToken) return;
+    if (!cached || !cached.idToken) { showLoginShell(); return; }
     currentIdToken = cached.idToken;
     currentUser = cached.user;
     callApi('listInvoices').then(function (res) {
-      if (!res.ok) { clearAuthStorage(); currentIdToken = null; currentUser = null; return; }
+      if (!res.ok) {
+        if (res.error === 'invoice_access_denied') { showDeniedShell(); return; }
+        clearAuthStorage(); currentIdToken = null; currentUser = null;
+        showLoginShell();
+        return;
+      }
       invoices = res.data || [];
-      $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
-      $('loginShell').classList.add('hidden');
-      $('appShell').classList.remove('hidden');
-      renderList();
-    }).catch(function () { clearAuthStorage(); currentIdToken = null; currentUser = null; });
+      showAppShell();
+    }).catch(function () {
+      clearAuthStorage(); currentIdToken = null; currentUser = null;
+      showLoginShell();
+    });
   }
 
   /* ---------- 一覧 ---------- */
@@ -542,6 +594,7 @@
     }, 200);
 
     $('btnLogout').addEventListener('click', logout);
+    $('btnDeniedLogout').addEventListener('click', logout);
     $('btnAddInvoice').addEventListener('click', openModal);
     $('btnInvoiceCancel').addEventListener('click', closeModal);
     $('btnInvoiceSave').addEventListener('click', saveInvoice);
