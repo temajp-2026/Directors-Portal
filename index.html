@@ -1434,10 +1434,18 @@
     btn.textContent = 'PDFを読み込み中…';
     callApi('ocrCoursePdf', { courseId: wpContextCourse.id }).then(function (res) {
       if (!res.ok) {
-        var msg = res.error === 'pdf_not_found' ? '添付されたPDFが見つかりませんでした'
-          : res.error === 'ocr_failed' ? 'PDFの読み取りに失敗しました。GAS側でDrive API(高度なサービス)が有効になっているかご確認ください。'
-          : 'PDFの読み取りに失敗しました：' + res.error;
-        showToast(msg);
+        var errCode = String(res.error || '');
+        if (errCode === 'pdf_not_found') {
+          showToast('添付されたPDFが見つかりませんでした');
+        } else if (errCode.indexOf('ocr_failed') === 0) {
+          showToast('PDFの読み取りに失敗しました。下の詳細をご確認ください。');
+          $('wpOcrRawText').value = '【エラー詳細】\n' + errCode.replace(/^ocr_failed:?/, '')
+            + '\n\n※このエラー文言を担当者にお伝えいただくと、原因の切り分けがしやすくなります。'
+            + '\n多くの場合、Google Cloud Console側で「Google Drive API」が有効化されていないことが原因です。';
+          $('wpOcrRawWrap').classList.remove('hidden');
+        } else {
+          showToast('PDFの読み取りに失敗しました：' + errCode);
+        }
         return;
       }
       var text = (res.data && res.data.text) || '';
