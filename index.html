@@ -116,6 +116,42 @@
 
   .app-body { max-width: 1040px; margin: 0 auto; padding: 28px 20px 64px; }
 
+  /* ---------- ダッシュボード ---------- */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .dash-card {
+    background: var(--gw-surface);
+    border: 1px solid var(--gw-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .dash-card-title { font-size: 13px; font-weight: 500; color: var(--gw-text); margin-bottom: 12px; }
+  .dash-empty { font-size: 12px; color: var(--gw-text-secondary); padding: 6px 0; }
+  .dash-error { font-size: 12px; color: var(--gw-yellow); background: var(--gw-yellow-tint); border-radius: 8px; padding: 8px 10px; }
+
+  .calendar-list { display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto; }
+  .calendar-event { display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px; }
+  .calendar-event-date {
+    flex: 0 0 auto; background: var(--gw-blue-tint); color: var(--gw-blue-dark); font-weight: 500;
+    border-radius: 8px; padding: 3px 8px; font-size: 11px; white-space: nowrap;
+  }
+  .calendar-event-body { flex: 1; min-width: 0; }
+  .calendar-event-title { color: var(--gw-text); font-weight: 500; }
+  .calendar-event-meta { color: var(--gw-text-secondary); font-size: 11px; margin-top: 1px; }
+
+  .prep-chart { display: flex; flex-direction: column; gap: 10px; }
+  .prep-bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .prep-bar-label { flex: 0 0 128px; color: var(--gw-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prep-bar-track { flex: 1; display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--gw-bg); }
+  .prep-bar-seg { height: 100%; }
+  .prep-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--gw-border); }
+  .prep-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gw-text-secondary); }
+  .prep-legend-swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
   /* ---------- メニュー ---------- */
   .menu-grid {
     display: grid;
@@ -173,6 +209,11 @@
   .status-実施予定 { background: var(--gw-blue-tint); color: var(--gw-blue-dark); }
   .status-実施済み { background: var(--gw-green-tint); color: var(--gw-green); }
   .status-中止 { background: var(--gw-red-tint); color: var(--gw-red); }
+  .pdf-badge {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 10px 3px 8px;
+    border-radius: 999px; margin-top: 8px; margin-left: 6px; background: var(--gw-bg); color: var(--gw-text-secondary);
+    border: 1px solid var(--gw-border);
+  }
 
   .empty-state { text-align: center; color: var(--gw-text-secondary); font-size: 13px; padding: 40px 0; }
 
@@ -188,12 +229,26 @@
   .field label { font-size: 12px; font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 5px; }
   .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 14px; }
   .full-span { grid-column: 1 / -1; }
-  input[type="text"], input[type="date"], input[type="time"], select {
+  input[type="text"], input[type="date"], input[type="time"], select, textarea {
     width: 100%; font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: 13px;
     padding: 9px 12px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface); color: var(--gw-text);
   }
-  input:focus, select:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
+  textarea { resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .modal-actions-split { justify-content: space-between; }
+  .field-note { font-size: 11.5px; color: var(--gw-text-secondary); line-height: 1.6; margin: -4px 0 12px; }
+
+  .pdf-field { border-top: 1px solid var(--gw-border); padding-top: 14px; margin-top: 4px; }
+  .pdf-none { font-size: 12px; color: var(--gw-text-secondary); margin-bottom: 8px; }
+  .pdf-current { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+  .pdf-thumb { width: 64px; height: 84px; object-fit: cover; border: 1px solid var(--gw-border); border-radius: 6px; background: var(--gw-bg); flex-shrink: 0; }
+  .pdf-current-info { flex: 1; min-width: 0; }
+  .pdf-filename { font-size: 12.5px; color: var(--gw-text); margin-bottom: 8px; word-break: break-all; }
+  .pdf-current-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pdf-current-actions .btn { text-decoration: none; }
+  .pdf-upload-status { font-size: 11.5px; color: var(--gw-blue); margin-top: 6px; }
+  input[type="file"] { width: 100%; font-size: 12.5px; }
 
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -203,6 +258,7 @@
 
   @media (max-width: 760px) {
     .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 480px) {
     .menu-grid { grid-template-columns: 1fr; }
@@ -244,8 +300,25 @@
   </div>
 
   <div class="app-body">
+    <div class="dashboard-grid">
+      <div class="dash-card">
+        <div class="dash-card-title">直近の予定（Googleカレンダー）</div>
+        <div id="calendarList" class="calendar-list"></div>
+        <div id="calendarEmpty" class="dash-empty hidden">直近の予定はありません。</div>
+        <div id="calendarError" class="dash-error hidden">カレンダーを表示できません。管理者にカレンダーの共有設定をご確認いただいてください。</div>
+        <div id="calendarLoading" class="dash-empty">読み込み中…</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">講座の準備状況（請求書関連）</div>
+        <div id="prepChart" class="prep-chart"></div>
+        <div id="prepChartEmpty" class="dash-empty hidden">対象の講座がありません。</div>
+        <div id="prepChartError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
+        <div id="prepChartLoading" class="dash-empty">読み込み中…</div>
+      </div>
+    </div>
+
     <div class="menu-grid">
-      <a class="menu-item" href="請求書管理簿.html">
+      <a class="menu-item" href="invoice-ledger.html">
         <div class="menu-item-title">請書兼請求書発行</div>
         <div class="menu-item-desc">講師への請書兼請求書を作成し、講師用リンクを発行・管理します。</div>
         <span class="menu-item-tag">講座連携は今後対応</span>
@@ -324,9 +397,92 @@
       <label for="c-status">ステータス</label>
       <select id="c-status"></select>
     </div>
-    <div class="modal-actions">
+
+    <div class="field pdf-field" id="pdfFieldWrap">
+      <label>講座案内PDF</label>
+      <div id="pdfNoFile" class="pdf-none hidden">まだPDFが添付されていません。</div>
+      <div id="pdfCurrent" class="pdf-current hidden">
+        <img id="pdfThumb" class="pdf-thumb" alt="PDFサムネイル">
+        <div class="pdf-current-info">
+          <div id="pdfFileName" class="pdf-filename"></div>
+          <div class="pdf-current-actions">
+            <a id="pdfDownloadLink" class="btn btn-outline" href="#" target="_blank" rel="noopener">開く／ダウンロード</a>
+            <button type="button" class="btn btn-cancel" id="btnPdfDelete">削除</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="c-pdfFile" accept="application/pdf" style="margin-top:8px;">
+      <div id="pdfUploadStatus" class="pdf-upload-status hidden"></div>
+      <div class="field-note">この講座は「＋新しい講座を追加」で先に保存してから、PDFを添付できます。</div>
+      <button type="button" class="btn btn-outline" id="btnOpenWp" style="display:none;">ワードプレス用の案内文HTMLを作成</button>
+    </div>
+
+    <div class="modal-actions modal-actions-split">
+      <button type="button" class="btn btn-cancel" id="btnCourseDelete" style="display:none;">この講座を削除</button>
+      <div style="flex:1;"></div>
       <button type="button" class="btn btn-cancel" id="btnCourseCancel">キャンセル</button>
       <button type="button" class="btn btn-primary" id="btnCourseSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ワードプレス案内文HTML作成モーダル -->
+<div id="wpModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 720px;">
+    <div class="modal-title">ワードプレス用 案内文HTMLを作成</div>
+    <div class="field-note" style="margin-bottom:14px;">
+      講座の案内PDFを見ながら、以下の項目を入力してください。入力内容から、そのままワードプレスに貼り付けられるHTMLを生成します。
+    </div>
+
+    <div class="field-grid">
+      <div class="field"><label for="wp-subCatch">キャッチコピー（小見出し）</label><input type="text" id="wp-subCatch" placeholder="例）創業110年を超える老舗染色工場を訪問"></div>
+      <div class="field"><label for="wp-headerPrefix">見出し上の装飾テキスト</label><input type="text" id="wp-headerPrefix" placeholder="例）完全定員制"></div>
+    </div>
+    <div class="field"><label for="wp-headerMain">見出し（タイトル）</label><input type="text" id="wp-headerMain" placeholder="例）内田染工場 見学会"></div>
+    <div class="field"><label for="wp-tags">タグ（カンマ区切り）</label><input type="text" id="wp-tags" placeholder="例）定員15名（抽選）, 現場体感"></div>
+    <div class="field"><label for="wp-intro">概要説明</label><textarea id="wp-intro" rows="3" placeholder="講座・見学会の概要文"></textarea></div>
+    <div class="field"><label for="wp-contentList">見学・研修内容（1行に1項目）</label><textarea id="wp-contentList" rows="4" placeholder="実際の染色工程の見学&#10;素材×染色による仕上がりの違い"></textarea></div>
+    <div class="field-grid">
+      <div class="field"><label for="wp-flyerImageUrl">チラシ画像URL</label><input type="text" id="wp-flyerImageUrl" placeholder="WordPressにアップロード後の画像URL"></div>
+      <div class="field"><label for="wp-flyerImageAlt">画像の代替テキスト</label><input type="text" id="wp-flyerImageAlt" placeholder="例）内田染工場見学会案内チラシ"></div>
+    </div>
+    <div class="field-note">※チラシ画像は添付PDFを参考に作成し、先にワードプレスのメディアにアップロードしてからURLを貼り付けてください。</div>
+
+    <div class="field-grid">
+      <div class="field"><label for="wp-guideOrgName">案内人（会社名等）</label><input type="text" id="wp-guideOrgName" placeholder="例）株式会社内田染工場"></div>
+      <div class="field"><label for="wp-guideName">案内人（氏名・肩書）</label><input type="text" id="wp-guideName" placeholder="例）代表取締役 内田 光治 氏"></div>
+    </div>
+    <div class="field"><label for="wp-eventDateTimeText">日時</label><input type="text" id="wp-eventDateTimeText" placeholder="例）2026年10月8日（木） 14:00～16:00"></div>
+    <div class="field-grid">
+      <div class="field"><label for="wp-venueName">場所（施設名）</label><input type="text" id="wp-venueName" placeholder="例）株式会社内田染工場"></div>
+      <div class="field"><label for="wp-venueAddress">場所（住所）</label><input type="text" id="wp-venueAddress" placeholder="例）東京都文京区白山3-5-2"></div>
+    </div>
+    <div class="field"><label for="wp-venueAccess">場所（アクセス）</label><input type="text" id="wp-venueAccess" placeholder="例）東京メトロ丸の内線「茗荷谷」駅下車 徒歩7分"></div>
+    <div class="field-grid">
+      <div class="field"><label for="wp-capacityText">定員</label><input type="text" id="wp-capacityText" placeholder="例）15名（※応募多数の場合は抽選）"></div>
+      <div class="field"><label for="wp-applyMethodText">申込方法</label><input type="text" id="wp-applyMethodText" placeholder="例）お申込フォームよりお申し込み下さい"></div>
+    </div>
+    <div class="field"><label for="wp-priceLines">参加費（1行に1項目、「区分：金額」の形式）</label><textarea id="wp-priceLines" rows="2" placeholder="スキルアップメンバー：無料&#10;会員企業：5,500円"></textarea></div>
+    <div class="field-grid">
+      <div class="field"><label for="wp-applyButtonText">申込ボタンの文言</label><input type="text" id="wp-applyButtonText" value="見学会に申し込む"></div>
+      <div class="field"><label for="wp-applyButtonUrl">申込ボタンのリンク先URL</label><input type="text" id="wp-applyButtonUrl" placeholder="申込フォームのURL"></div>
+    </div>
+    <div class="modal-section-title" style="font-size:13px; font-weight:500; margin:18px 0 10px; color:var(--gw-text-secondary);">お問い合わせ（通常は変更不要）</div>
+    <div class="field-grid">
+      <div class="field"><label for="wp-contactTel">TEL</label><input type="text" id="wp-contactTel" value="03-3811-5821"></div>
+      <div class="field"><label for="wp-contactFax">FAX</label><input type="text" id="wp-contactFax" value="03-3811-5822"></div>
+    </div>
+    <div class="field"><label for="wp-contactMail">MAIL</label><input type="text" id="wp-contactMail" value="tema@tema.jp"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnWpCancel">閉じる</button>
+      <button type="button" class="btn btn-outline" id="btnWpPreview">プレビュー</button>
+      <button type="button" class="btn btn-primary" id="btnWpGenerate">HTMLを生成してコピー</button>
+    </div>
+
+    <div id="wpResult" class="field hidden" style="margin-top:16px;">
+      <label>生成されたHTML（コピー済み・そのままワードプレスに貼り付けられます）</label>
+      <textarea id="wpResultHtml" rows="8" readonly style="font-family: monospace; font-size: 11px;"></textarea>
     </div>
   </div>
 </div>
@@ -348,6 +504,11 @@
   var editingCourseId = null;
   var departments = [];
   var pulldownOptions = {};
+  var editingCoursePdf = null; // { pdfFileId, pdfFileName, pdfUrl, pdfThumbnailUrl } | null
+  var wpContextCourse = null;
+  var invoicesCache = [];
+  var VENUE_HALL_2F = '白王ビル２Fホール';
+  var VENUE_HALL_2F_ADDRESS = '東京都文京区後楽2-3-10';
 
   // 同じタブ内で他の理事ポータルのツール(請求書管理簿など)に移動しても
   // 再ログインを求めないよう、ログイン情報をタブ内に一時保存する。
@@ -434,6 +595,29 @@
     }).then(function (r) { return r.json(); });
   }
 
+  function copyText(text, okMsg) {
+    function done() { showToast(okMsg || 'コピーしました'); }
+    function fail() { showToast('コピーできませんでした。手動でコピーしてください。'); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(text, done, fail); });
+      } else {
+        legacyCopy(text, done, fail);
+      }
+    } catch (e) { legacyCopy(text, done, fail); }
+  }
+
+  function legacyCopy(text, done, fail) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? done() : fail();
+    } catch (e) { fail(); }
+  }
+
   function showLoginShell() {
     $('authCheckShell').classList.add('hidden');
     $('appShell').classList.add('hidden');
@@ -447,6 +631,7 @@
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     renderCourses();
     loadMasterData();
+    loadDashboard();
   }
 
   /** 担当科・研修形式・ステータスのプルダウン選択肢をSS(スプレッドシート)から取得する */
@@ -459,6 +644,154 @@
       fillSelect($('c-status'), pulldownOptions['講座ステータス'] || ['準備中'], null);
       fillSelect($('c-venue'), venueOptions(), '－ 選択してください －');
     }).catch(function () {});
+  }
+
+  /* ---------- ダッシュボード ---------- */
+  function loadDashboard() {
+    loadCalendarEvents();
+    loadPrepChart();
+  }
+
+  function loadCalendarEvents() {
+    callApi('listUpcomingEvents', { days: 60 }).then(function (res) {
+      $('calendarLoading').classList.add('hidden');
+      if (!res.ok) {
+        $('calendarError').classList.remove('hidden');
+        return;
+      }
+      renderCalendarList(res.data || []);
+    }).catch(function () {
+      $('calendarLoading').classList.add('hidden');
+      $('calendarError').classList.remove('hidden');
+    });
+  }
+
+  function renderCalendarList(events) {
+    var list = $('calendarList');
+    list.innerHTML = '';
+    if (!events.length) { $('calendarEmpty').classList.remove('hidden'); return; }
+    $('calendarEmpty').classList.add('hidden');
+    events.slice(0, 20).forEach(function (ev) {
+      var startDate = String(ev.start || '').slice(0, 10);
+      var startTime = ev.allDay ? '' : String(ev.start || '').slice(11, 16);
+      var endTime = ev.allDay ? '' : String(ev.end || '').slice(11, 16);
+      var row = document.createElement('div');
+      row.className = 'calendar-event';
+      var dateEl = document.createElement('div');
+      dateEl.className = 'calendar-event-date';
+      dateEl.textContent = jpDate(startDate, true);
+      var body = document.createElement('div');
+      body.className = 'calendar-event-body';
+      var titleEl = document.createElement('div');
+      titleEl.className = 'calendar-event-title';
+      titleEl.textContent = ev.title || '(無題の予定)';
+      var metaEl = document.createElement('div');
+      metaEl.className = 'calendar-event-meta';
+      var metaParts = [];
+      if (!ev.allDay) { metaParts.push(jpTimeRange(startTime, endTime) || (startTime + '〜' + endTime)); }
+      if (ev.location) { metaParts.push(ev.location); }
+      metaEl.textContent = metaParts.join('　');
+      body.appendChild(titleEl);
+      if (metaParts.length) body.appendChild(metaEl);
+      row.appendChild(dateEl);
+      row.appendChild(body);
+      list.appendChild(row);
+    });
+  }
+
+  var PREP_STAGE_ORDER = ['未作成', '作成済み', '確定済み', '支払い済み', '取消'];
+  var PREP_STAGE_COLORS = {
+    '未作成': '#9aa0a6',
+    '作成済み': 'var(--gw-blue)',
+    '確定済み': '#7cb9f5',
+    '支払い済み': 'var(--gw-green)',
+    '取消': 'var(--gw-border)'
+  };
+
+  function loadPrepChart() {
+    callApi('listInvoices').then(function (res) {
+      $('prepChartLoading').classList.add('hidden');
+      if (!res.ok) {
+        $('prepChartError').classList.remove('hidden');
+        return;
+      }
+      invoicesCache = res.data || [];
+      renderPrepChart(invoicesCache);
+    }).catch(function () {
+      $('prepChartLoading').classList.add('hidden');
+      $('prepChartError').classList.remove('hidden');
+    });
+  }
+
+  /** 講座ごとに、紐付く請求書の進捗ステージを1つ判定する(複数ある場合は最新のものを優先) */
+  function coursePrepStage(course, invoices) {
+    var linked = invoices.filter(function (inv) { return inv.courseId === course.id; });
+    if (!linked.length) return '未作成';
+    // 取消以外を優先して最新のものを見る
+    var active = linked.filter(function (inv) { return inv.status !== '取消'; });
+    var target = (active.length ? active : linked).sort(function (a, b) {
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    })[0];
+    return PREP_STAGE_ORDER.indexOf(target.status) !== -1 ? target.status : '未作成';
+  }
+
+  function renderPrepChart(invoices) {
+    var chart = $('prepChart');
+    chart.innerHTML = '';
+    // 中止以外・直近120日以内に開催予定の講座を対象にする
+    var target = courses.filter(function (c) {
+      if (c.status === '中止') return false;
+      var du = daysUntilLocal(c.eventDate);
+      return du === null || (du >= -14 && du <= 120);
+    });
+    if (!target.length) { $('prepChartEmpty').classList.remove('hidden'); return; }
+    $('prepChartEmpty').classList.add('hidden');
+
+    target.sort(function (a, b) { return String(a.eventDate || '').localeCompare(String(b.eventDate || '')); });
+
+    target.slice(0, 8).forEach(function (c) {
+      var stage = coursePrepStage(c, invoices);
+      var row = document.createElement('div');
+      row.className = 'prep-bar-row';
+      var label = document.createElement('div');
+      label.className = 'prep-bar-label';
+      label.textContent = (c.eventDate ? c.eventDate.slice(5).replace('-', '/') + '　' : '') + (c.name || '(名称未設定)');
+      label.title = c.name || '';
+      var track = document.createElement('div');
+      track.className = 'prep-bar-track';
+      var seg = document.createElement('div');
+      seg.className = 'prep-bar-seg';
+      var stageIdx = PREP_STAGE_ORDER.indexOf(stage);
+      var pct = stage === '未作成' ? 8 : Math.round(((stageIdx + 1) / (PREP_STAGE_ORDER.length - 1)) * 100);
+      seg.style.width = pct + '%';
+      seg.style.background = PREP_STAGE_COLORS[stage] || '#9aa0a6';
+      seg.title = stage;
+      track.appendChild(seg);
+      row.appendChild(label);
+      row.appendChild(track);
+      chart.appendChild(row);
+    });
+
+    var legend = document.createElement('div');
+    legend.className = 'prep-legend';
+    PREP_STAGE_ORDER.forEach(function (stage) {
+      var item = document.createElement('div');
+      item.className = 'prep-legend-item';
+      var sw = document.createElement('span');
+      sw.className = 'prep-legend-swatch';
+      sw.style.background = PREP_STAGE_COLORS[stage];
+      item.appendChild(sw);
+      item.appendChild(document.createTextNode(stage));
+      legend.appendChild(item);
+    });
+    chart.appendChild(legend);
+  }
+
+  function daysUntilLocal(dateStr) {
+    if (!dateStr) return null;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d - today) / 86400000);
   }
 
   function fillSelect(selectEl, values, emptyLabel) {
@@ -553,7 +886,8 @@
         '開催場所：<span class="c-venue"></span><br>' +
         '担当理事：<span class="c-director"></span>' + (c.department ? '（<span class="c-department"></span>）' : '') +
         '</div>' +
-        '<span class="status-badge"></span>';
+        '<span class="status-badge"></span>' +
+        (c.pdfFileId ? '<span class="pdf-badge">📎 案内PDF</span>' : '');
       card.querySelector('.course-name').textContent = c.name || '(名称未設定)';
       card.querySelector('.c-date').textContent = c.eventDate ? jpDate(c.eventDate, true) : '未定';
       card.querySelector('.c-time').textContent = (c.startTime || c.endTime) ? '　' + jpTimeRange(c.startTime, c.endTime) : '';
@@ -570,6 +904,7 @@
 
   function openCourseModal(course) {
     editingCourseId = course ? course.id : null;
+    wpContextCourse = course;
     $('courseModalTitle').textContent = course ? '講座を編集' : '新しい講座を追加';
     $('c-name').value = course ? course.name : '';
     $('c-eventDate').value = course ? course.eventDate : '';
@@ -580,11 +915,312 @@
     $('c-department').value = course ? (course.department || '') : '';
     $('c-format').value = course ? (course.format || '座学') : '座学';
     $('c-status').value = course ? course.status : '準備中';
+
+    $('c-pdfFile').value = '';
+    $('pdfUploadStatus').classList.add('hidden');
+    editingCoursePdf = course && course.pdfFileId ? {
+      pdfFileId: course.pdfFileId, pdfFileName: course.pdfFileName, pdfUrl: course.pdfUrl, pdfThumbnailUrl: course.pdfThumbnailUrl
+    } : null;
+    renderPdfSection();
+    $('pdfFieldWrap').querySelector('.field-note').classList.toggle('hidden', !!editingCourseId);
+    $('c-pdfFile').disabled = !editingCourseId;
+    $('btnOpenWp').style.display = editingCourseId ? '' : 'none';
+    $('btnCourseDelete').style.display = editingCourseId ? '' : 'none';
+
     $('courseModal').classList.remove('hidden');
   }
 
   function closeCourseModal() {
     $('courseModal').classList.add('hidden');
+  }
+
+  function renderPdfSection() {
+    var has = !!(editingCoursePdf && editingCoursePdf.pdfFileId);
+    $('pdfNoFile').classList.toggle('hidden', has);
+    $('pdfCurrent').classList.toggle('hidden', !has);
+    if (has) {
+      $('pdfThumb').src = editingCoursePdf.pdfThumbnailUrl || '';
+      $('pdfFileName').textContent = editingCoursePdf.pdfFileName || '';
+      $('pdfDownloadLink').href = editingCoursePdf.pdfUrl || '#';
+    }
+  }
+
+  function uploadSelectedPdf() {
+    var fileInput = $('c-pdfFile');
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (!editingCourseId) { showToast('先に講座を保存してからPDFを添付してください'); return; }
+    if (file.size > 15 * 1024 * 1024) { showToast('PDFのサイズが大きすぎます（15MBまで）'); fileInput.value = ''; return; }
+
+    var statusEl = $('pdfUploadStatus');
+    statusEl.textContent = 'アップロード中…';
+    statusEl.classList.remove('hidden');
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      callApi('uploadCoursePdf', {
+        courseId: editingCourseId, fileName: file.name, mimeType: file.type || 'application/pdf', base64Data: base64
+      }).then(function (res) {
+        if (!res.ok) { showToast('PDFの添付に失敗しました：' + res.error); statusEl.classList.add('hidden'); return; }
+        editingCoursePdf = res.data;
+        renderPdfSection();
+        fileInput.value = '';
+        statusEl.classList.add('hidden');
+        showToast('PDFを添付しました');
+        return callApi('listCourses');
+      }).then(function (res) {
+        if (res && res.ok) { courses = res.data; renderCourses(); }
+      }).catch(function () {
+        showToast('PDFの添付に失敗しました');
+        statusEl.classList.add('hidden');
+      });
+    };
+    reader.onerror = function () { showToast('ファイルの読み込みに失敗しました'); statusEl.classList.add('hidden'); };
+    reader.readAsDataURL(file);
+  }
+
+  function deleteCurrentPdf() {
+    if (!editingCourseId || !editingCoursePdf) return;
+    if (!confirm('添付されているPDFを削除しますか？')) return;
+    callApi('deleteCoursePdf', { courseId: editingCourseId }).then(function (res) {
+      if (!res.ok) { showToast('削除に失敗しました：' + res.error); return; }
+      editingCoursePdf = null;
+      renderPdfSection();
+      showToast('PDFを削除しました');
+      return callApi('listCourses');
+    }).then(function (res) {
+      if (res && res.ok) { courses = res.data; renderCourses(); }
+    });
+  }
+
+  function deleteCurrentCourse() {
+    if (!editingCourseId) return;
+    if (!confirm('この講座を削除しますか？この操作は取り消せません。')) return;
+    var btn = $('btnCourseDelete');
+    btn.disabled = true;
+    callApi('deleteCourse', { id: editingCourseId }).then(function (res) {
+      if (!res.ok) {
+        var msg = res.error === 'course_has_invoice'
+          ? 'この講座には請求書が紐付いているため削除できません。先に請求書を取消してください。'
+          : '削除に失敗しました：' + res.error;
+        showToast(msg);
+        return;
+      }
+      closeCourseModal();
+      showToast('講座を削除しました');
+      return callApi('listCourses');
+    }).then(function (res) {
+      if (res && res.ok) { courses = res.data; renderCourses(); loadPrepChart(); }
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  /* ---------- ワードプレス用HTML生成 ---------- */
+  function findLinkedInvoiceForCourse(courseId) {
+    var linked = invoicesCache.filter(function (inv) { return inv.courseId === courseId; });
+    if (!linked.length) return null;
+    var active = linked.filter(function (inv) { return inv.status !== '取消'; });
+    var target = (active.length ? active : linked).sort(function (a, b) {
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    })[0];
+    return target || null;
+  }
+
+  function openWpModal(course) {
+    wpContextCourse = course;
+    prefillWpModal(course);
+    $('wpResult').classList.add('hidden');
+    $('wpResultHtml').value = '';
+    $('wpModal').classList.remove('hidden');
+  }
+
+  function closeWpModal() {
+    $('wpModal').classList.add('hidden');
+  }
+
+  function prefillWpModal(course) {
+    var inv = course ? findLinkedInvoiceForCourse(course.id) : null;
+    $('wp-subCatch').value = '';
+    $('wp-headerPrefix').value = '';
+    $('wp-headerMain').value = course ? (course.name || '') : '';
+    $('wp-tags').value = '';
+    $('wp-intro').value = '';
+    $('wp-contentList').value = '';
+    $('wp-flyerImageUrl').value = '';
+    $('wp-flyerImageAlt').value = course ? (course.name ? course.name + '案内チラシ' : '') : '';
+    $('wp-guideOrgName').value = inv ? (inv.lecturerCompanyName || '') : '';
+    $('wp-guideName').value = inv ? (inv.lecturerName || '') : '';
+    $('wp-eventDateTimeText').value = course && course.eventDate
+      ? (jpDate(course.eventDate, true) + (jpTimeRange(course.startTime, course.endTime) ? '　' + jpTimeRange(course.startTime, course.endTime) : ''))
+      : '';
+    var venue = course ? (course.venue || '') : '';
+    $('wp-venueName').value = venue;
+    $('wp-venueAddress').value = venue === VENUE_HALL_2F ? VENUE_HALL_2F_ADDRESS : '';
+    $('wp-venueAccess').value = '';
+    $('wp-capacityText').value = '';
+    $('wp-applyMethodText').value = '';
+    $('wp-priceLines').value = '';
+    $('wp-applyButtonText').value = '見学会に申し込む';
+    $('wp-applyButtonUrl').value = '';
+    $('wp-contactTel').value = '03-3811-5821';
+    $('wp-contactFax').value = '03-3811-5822';
+    $('wp-contactMail').value = 'tema@tema.jp';
+  }
+
+  function collectWpFields() {
+    return {
+      subCatch: $('wp-subCatch').value.trim(),
+      headerPrefix: $('wp-headerPrefix').value.trim(),
+      headerMain: $('wp-headerMain').value.trim(),
+      tags: $('wp-tags').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+      intro: $('wp-intro').value.trim(),
+      contentList: $('wp-contentList').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
+      flyerImageUrl: $('wp-flyerImageUrl').value.trim(),
+      flyerImageAlt: $('wp-flyerImageAlt').value.trim(),
+      guideOrgName: $('wp-guideOrgName').value.trim(),
+      guideName: $('wp-guideName').value.trim(),
+      eventDateTimeText: $('wp-eventDateTimeText').value.trim(),
+      venueName: $('wp-venueName').value.trim(),
+      venueAddress: $('wp-venueAddress').value.trim(),
+      venueAccess: $('wp-venueAccess').value.trim(),
+      capacityText: $('wp-capacityText').value.trim(),
+      applyMethodText: $('wp-applyMethodText').value.trim(),
+      priceLines: $('wp-priceLines').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
+      applyButtonText: $('wp-applyButtonText').value.trim() || '申し込む',
+      applyButtonUrl: $('wp-applyButtonUrl').value.trim() || '#',
+      contactTel: $('wp-contactTel').value.trim(),
+      contactFax: $('wp-contactFax').value.trim(),
+      contactMail: $('wp-contactMail').value.trim()
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /** 案内文HTMLを生成する(理事会で使っている既存テンプレートの構成に合わせたセルフコンテインドなHTML) */
+  function generateWpHtml(f) {
+    var tagsHtml = f.tags.map(function (t) {
+      return '      <span class="ai-seminar-tag">' + escapeHtml(t) + '</span>';
+    }).join('\n');
+
+    var contentListHtml = f.contentList.map(function (item) {
+      return '        <li>' + escapeHtml(item) + '</li>';
+    }).join('\n');
+
+    var priceHtml = f.priceLines.length
+      ? f.priceLines.map(function (line) {
+          var idx = line.indexOf('：') !== -1 ? line.indexOf('：') : line.indexOf(':');
+          if (idx === -1) return '          <div>' + escapeHtml(line) + '</div>';
+          var label = line.slice(0, idx).trim();
+          var val = line.slice(idx + 1).trim();
+          return '          <div><span class="price-label">' + escapeHtml(label) + '：</span>' + escapeHtml(val) + '</div>';
+        }).join('\n')
+      : '          <div>-</div>';
+
+    var flyerBlock = '';
+    if (f.flyerImageUrl) {
+      flyerBlock =
+        '    <div class="seminar-pdf-image-box">\n' +
+        '      <!-- チラシ画像はワードプレスのメディアにアップロード後、下記src属性のURLを差し替えてください -->\n' +
+        '      <img src="' + escapeHtml(f.flyerImageUrl) + '" alt="' + escapeHtml(f.flyerImageAlt) + '">\n' +
+        '    </div>\n\n';
+    } else {
+      flyerBlock =
+        '    <div class="seminar-pdf-image-box">\n' +
+        '      <!-- ここにチラシ画像を追加してください。ワードプレスのメディアにアップロード後、下記src属性のURLを差し替えてください -->\n' +
+        '      <img src="REPLACE_WITH_UPLOADED_IMAGE_URL" alt="' + escapeHtml(f.flyerImageAlt) + '">\n' +
+        '    </div>\n\n';
+    }
+
+    var lecturerBlock = (f.guideOrgName || f.guideName)
+      ? (
+          '    <div class="lecturer-box">\n' +
+          '      <div class="lecturer-label">案内人</div>\n' +
+          (f.guideOrgName ? '      <div class="lecturer-org">' + escapeHtml(f.guideOrgName) + '</div>\n' : '') +
+          (f.guideName ? '      <div class="lecturer-name">' + escapeHtml(f.guideName) + '</div>\n' : '') +
+          '    </div>\n\n'
+        )
+      : '';
+
+    var html =
+      '<div class="ai-seminar-container">\n' +
+      '  <style>\n' +
+      '    .ai-seminar-container { max-width: 720px; margin: 0 auto; font-family: "Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; color: #333; line-height: 1.8; }\n' +
+      '    .ai-seminar-header { background: linear-gradient(135deg, #2a6fb0 0%, #1c4f80 100%); color: #fff; border-radius: 12px 12px 0 0; padding: 28px 24px 24px; }\n' +
+      '    .ai-seminar-header .sub-catch { font-size: 14px; opacity: .9; margin: 0 0 6px; }\n' +
+      '    .ai-seminar-header h1 { font-size: 22px; margin: 0; line-height: 1.5; }\n' +
+      '    .ai-seminar-header h1 span { display: inline-block; background: rgba(255,255,255,.18); border-radius: 4px; padding: 2px 8px; font-size: 13px; margin-right: 8px; vertical-align: middle; }\n' +
+      '    .ai-seminar-body { border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 12px 12px; padding: 24px; background: #fff; }\n' +
+      '    .ai-seminar-tag-container { margin-bottom: 16px; }\n' +
+      '    .ai-seminar-tag { display: inline-block; background: #eef4fb; color: #1c4f80; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 999px; margin: 0 6px 6px 0; }\n' +
+      '    .ai-seminar-intro { font-size: 14.5px; margin-bottom: 18px; }\n' +
+      '    .content-list { margin: 0 0 20px; padding-left: 1.3em; font-size: 14px; }\n' +
+      '    .content-list li { margin-bottom: 4px; }\n' +
+      '    .seminar-pdf-image-box { text-align: center; margin-bottom: 20px; }\n' +
+      '    .seminar-pdf-image-box img { max-width: 100%; border-radius: 8px; border: 1px solid #e0e0e0; }\n' +
+      '    .lecturer-box { background: #f7f9fb; border-left: 4px solid #2a6fb0; border-radius: 4px; padding: 12px 16px; margin-bottom: 20px; }\n' +
+      '    .lecturer-box .lecturer-label { font-size: 12px; color: #777; margin-bottom: 2px; }\n' +
+      '    .lecturer-box .lecturer-org { font-size: 14px; font-weight: 500; }\n' +
+      '    .lecturer-box .lecturer-name { font-size: 13.5px; color: #555; }\n' +
+      '    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 14px; }\n' +
+      '    .info-table th, .info-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; }\n' +
+      '    .info-table th { width: 108px; color: #555; font-weight: 500; white-space: nowrap; }\n' +
+      '    .info-table .price-label { color: #777; }\n' +
+      '    .ai-seminar-apply-btn { display: block; width: 100%; max-width: 320px; margin: 0 auto 26px; text-align: center; background: #2a6fb0; color: #fff !important; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 20px; border-radius: 999px; }\n' +
+      '    .ai-seminar-apply-btn:hover { background: #1c4f80; }\n' +
+      '    .ai-seminar-footer { border-top: 1px solid #eee; padding-top: 16px; font-size: 12.5px; color: #777; text-align: center; }\n' +
+      '    .ai-seminar-footer .org-name { font-weight: 500; color: #555; margin-bottom: 4px; }\n' +
+      '  </style>\n\n' +
+      '  <div class="ai-seminar-header">\n' +
+      (f.subCatch ? '    <p class="sub-catch">' + escapeHtml(f.subCatch) + '</p>\n' : '') +
+      '    <h1>' + (f.headerPrefix ? '<span>' + escapeHtml(f.headerPrefix) + '</span>' : '') + escapeHtml(f.headerMain) + '</h1>\n' +
+      '  </div>\n\n' +
+      '  <div class="ai-seminar-body">\n' +
+      (f.tags.length ? '    <div class="ai-seminar-tag-container">\n' + tagsHtml + '\n    </div>\n\n' : '') +
+      (f.intro ? '    <p class="ai-seminar-intro">' + escapeHtml(f.intro) + '</p>\n\n' : '') +
+      (f.contentList.length ? '    <ul class="content-list">\n' + contentListHtml + '\n    </ul>\n\n' : '') +
+      flyerBlock +
+      lecturerBlock +
+      '    <table class="info-table">\n' +
+      '      <tr><th>日時</th><td>' + escapeHtml(f.eventDateTimeText) + '</td></tr>\n' +
+      '      <tr><th>場所</th><td>' + escapeHtml(f.venueName) + (f.venueAddress ? '<br>' + escapeHtml(f.venueAddress) : '') + (f.venueAccess ? '<br>' + escapeHtml(f.venueAccess) : '') + '</td></tr>\n' +
+      '      <tr><th>定員</th><td>' + escapeHtml(f.capacityText) + '</td></tr>\n' +
+      '      <tr><th>参加費</th><td>\n' + priceHtml + '\n      </td></tr>\n' +
+      '      <tr><th>申込方法</th><td>' + escapeHtml(f.applyMethodText) + '</td></tr>\n' +
+      '    </table>\n\n' +
+      '    <a class="ai-seminar-apply-btn" href="' + escapeHtml(f.applyButtonUrl) + '" target="_blank" rel="noopener">' + escapeHtml(f.applyButtonText) + '</a>\n\n' +
+      '    <div class="ai-seminar-footer">\n' +
+      '      <div class="org-name">NPO法人日本繊維商品めんてなんす研究会</div>\n' +
+      '      <div>TEL：' + escapeHtml(f.contactTel) + '　FAX：' + escapeHtml(f.contactFax) + '　MAIL：' + escapeHtml(f.contactMail) + '</div>\n' +
+      '    </div>\n' +
+      '  </div>\n' +
+      '</div>';
+
+    return html;
+  }
+
+  function handleWpGenerate() {
+    var fields = collectWpFields();
+    if (!fields.headerMain) { showToast('見出し（タイトル）を入力してください'); return; }
+    var html = generateWpHtml(fields);
+    $('wpResultHtml').value = html;
+    $('wpResult').classList.remove('hidden');
+    copyText(html, 'HTMLを生成してコピーしました');
+  }
+
+  function handleWpPreview() {
+    var fields = collectWpFields();
+    var html = generateWpHtml(fields);
+    var win = window.open('', '_blank');
+    if (!win) { showToast('プレビューを開けませんでした（ポップアップブロックをご確認ください）'); return; }
+    win.document.open();
+    win.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>プレビュー</title></head><body style="margin:24px; background:#f2f4f6;">' + html + '</body></html>');
+    win.document.close();
   }
 
   function saveCourse() {
@@ -630,7 +1266,7 @@
     var initTimer = setInterval(function () {
       if (window.google && google.accounts && google.accounts.id) {
         clearInterval(initTimer);
-        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
+        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse, itp_support: true });
         google.accounts.id.renderButton($('gsiButton'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja' });
       }
     }, 200);
@@ -639,9 +1275,21 @@
     $('btnAddCourse').addEventListener('click', function () { openCourseModal(null); });
     $('btnCourseCancel').addEventListener('click', closeCourseModal);
     $('btnCourseSave').addEventListener('click', saveCourse);
+    $('btnCourseDelete').addEventListener('click', deleteCurrentCourse);
     $('c-venue').addEventListener('change', onVenueSelectChange);
     $('courseModal').addEventListener('click', function (e) {
       if (e.target.id === 'courseModal') closeCourseModal();
+    });
+
+    $('c-pdfFile').addEventListener('change', uploadSelectedPdf);
+    $('btnPdfDelete').addEventListener('click', deleteCurrentPdf);
+
+    $('btnOpenWp').addEventListener('click', function () { openWpModal(wpContextCourse); });
+    $('btnWpCancel').addEventListener('click', closeWpModal);
+    $('btnWpPreview').addEventListener('click', handleWpPreview);
+    $('btnWpGenerate').addEventListener('click', handleWpGenerate);
+    $('wpModal').addEventListener('click', function (e) {
+      if (e.target.id === 'wpModal') closeWpModal();
     });
   });
 })();
