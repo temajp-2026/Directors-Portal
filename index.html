@@ -545,6 +545,24 @@
       <div id="ppMaterialUploadStatus" class="pdf-upload-status hidden"></div>
     </div>
 
+    <div class="field">
+      <label>⑤ 参加者募集フォーム</label>
+      <input type="text" id="pp-formSheetUrl" placeholder="回答用スプレッドシートのURLを貼り付け">
+      <div class="field-note">別アカウントで作成したフォームでも、回答用スプレッドシートをこのシステムのGoogleアカウントと共有すれば、講座ごとの申込件数を自動集計できます。</div>
+      <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" id="btnPpFormRefresh">集計を更新</button>
+        <a id="ppFormSheetLink" class="btn btn-outline hidden" href="#" target="_blank" rel="noopener">スプレッドシートを開く</a>
+      </div>
+      <div id="ppFormSummary" class="ov-meta" style="margin-top:8px;"></div>
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-size:12px; color:var(--gw-text-secondary);">詳細設定（会場／ZOOMの自動判定がうまくいかない場合のみ）</summary>
+        <div class="field" style="margin-top:6px;">
+          <label for="pp-formVenueColumnOverride">会場／ZOOMを判定する列の見出し文字列</label>
+          <input type="text" id="pp-formVenueColumnOverride" placeholder="例：参加方法（回答シートの見出し行と完全に一致する文字列）">
+        </div>
+      </details>
+    </div>
+
     <div class="modal-actions">
       <button type="button" class="btn btn-cancel" id="btnPpCancel">閉じる</button>
       <button type="button" class="btn btn-primary" id="btnPpSave">保存</button>
@@ -1290,6 +1308,11 @@
     renderPrepInvoiceSummary(course);
     renderPrepChecklistForm(course);
     renderPrepMaterialSection(course);
+    $('pp-formSheetUrl').value = course.formSheetUrl || '';
+    $('pp-formVenueColumnOverride').value = course.formVenueColumnOverride || '';
+    renderFormSheetLink(course.formSheetUrl || '');
+    $('ppFormSummary').innerHTML = '';
+    if (course.formSheetUrl) { refreshFormSummary(); }
     $('prepProgressModal').classList.remove('hidden');
   }
 
@@ -1420,6 +1443,54 @@
     });
   }
 
+  function renderFormSheetLink(url) {
+    var link = $('ppFormSheetLink');
+    if (url) {
+      link.href = url;
+      link.classList.remove('hidden');
+    } else {
+      link.classList.add('hidden');
+    }
+  }
+
+  function refreshFormSummary() {
+    var sheetUrl = $('pp-formSheetUrl').value.trim();
+    var summaryEl = $('ppFormSummary');
+    renderFormSheetLink(sheetUrl);
+    if (!sheetUrl) { summaryEl.textContent = '参加者募集フォームの回答スプレッドシートのURLを入力してください。'; return; }
+    var btn = $('btnPpFormRefresh');
+    btn.disabled = true;
+    summaryEl.textContent = '集計中…';
+    callApi('getFormSignupSummary', {
+      sheetUrl: sheetUrl,
+      columnOverride: $('pp-formVenueColumnOverride').value.trim()
+    }).then(function (res) {
+      if (!res.ok) {
+        var msg = '集計に失敗しました：' + res.error;
+        if (String(res.error || '').indexOf('form_sheet_access_failed') === 0) {
+          msg = 'このスプレッドシートにアクセスできませんでした。共有設定（このシステムのGoogleアカウントを閲覧者として共有）をご確認ください。';
+        } else if (res.error === 'form_sheet_url_missing') {
+          msg = 'スプレッドシートのURLを入力してください。';
+        }
+        summaryEl.textContent = msg;
+        return;
+      }
+      var d = res.data;
+      var lines = ['合計：' + d.total + '件（会場：' + d.venueCount + '件／ZOOM：' + d.zoomCount + '件）'];
+      if (d.otherCount) lines.push('（うち内訳不明：' + d.otherCount + '件）');
+      if (d.columnUsed) {
+        lines.push((d.autoDetected ? '自動判定した列：' : '指定した列：') + escapeHtml(d.columnUsed));
+      } else {
+        lines.push('会場／ZOOMを判定する列が見つかりませんでした。合計件数のみ表示しています。判定に使う列名がわかる場合は、詳細設定欄に入力してください。');
+      }
+      summaryEl.innerHTML = lines.map(function (l) { return '<div>' + l + '</div>'; }).join('');
+    }).catch(function () {
+      summaryEl.textContent = '集計に失敗しました。時間をおいて再度お試しください。';
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
   function savePrepProgress() {
     if (!activeCourse) return;
     var checklist = {};
@@ -1433,7 +1504,9 @@
       lecturerMeetingDone: $('pp-meetingDone').checked,
       lecturerMeetingNote: $('pp-meetingNote').value,
       prepChecklistJson: JSON.stringify(checklist),
-      prepMaterialsDone: items.length > 0 && doneCount === items.length
+      prepMaterialsDone: items.length > 0 && doneCount === items.length,
+      formSheetUrl: $('pp-formSheetUrl').value.trim(),
+      formVenueColumnOverride: $('pp-formVenueColumnOverride').value.trim()
     };
     var btn = $('btnPpSave');
     btn.disabled = true;
@@ -1817,6 +1890,7 @@
     $('btnPpSave').addEventListener('click', savePrepProgress);
     $('pp-materialFile').addEventListener('change', uploadLecturerMaterial_);
     $('btnPpMaterialDelete').addEventListener('click', deleteLecturerMaterial_);
+    $('btnPpFormRefresh').addEventListener('click', refreshFormSummary);
     $('prepProgressModal').addEventListener('click', function (e) {
       if (e.target.id === 'prepProgressModal') closePrepProgressModal();
     });
