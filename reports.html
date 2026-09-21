@@ -153,11 +153,14 @@
 
   .report-courses-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
   .report-course-row {
-    display: grid; grid-template-columns: 2fr 1fr 90px 90px auto; align-items: end; gap: 8px;
+    display: grid; grid-template-columns: 2fr 1fr 90px 90px auto; align-items: start; gap: 8px;
     background: var(--gw-bg); border: 1px solid var(--gw-border); border-radius: 8px; padding: 10px 12px;
   }
   .report-course-row .field { margin-bottom: 0; }
-  .report-course-row input { width: 100%; }
+  .report-course-row input, .report-course-row select { width: 100%; }
+  .report-course-row .rc-title-custom { margin-top: 6px; }
+  .report-course-row button { margin-top: 22px; }
+  .rc-hint { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-top: 4px; }
   @media (max-width: 640px) {
     .report-course-row { grid-template-columns: 1fr 1fr; }
   }
@@ -337,6 +340,7 @@
   var currentMonth = '';
   var editingDepartment = null;
   var editingReport = null;
+  var currentDeptCourses = []; // 編集中の担当科の講座一覧(「直近の講座開催」プルダウン用)
 
   // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、同じタブ内で移動してきた場合は再ログインを求めない。
   var AUTH_STORAGE_KEY = 'riji_portal_auth';
@@ -554,6 +558,15 @@
   }
 
   /* ---------- 報告書編集 ---------- */
+  /** 対象の担当科の講座一覧を取得し、currentDeptCoursesに格納する(「直近の講座開催」プルダウン用) */
+  function loadDeptCoursesForModal(deptName) {
+    return callApi('listCourses').then(function (res) {
+      currentDeptCourses = res.ok
+        ? (res.data || []).filter(function (c) { return c.department === deptName; })
+        : [];
+    }).catch(function () { currentDeptCourses = []; });
+  }
+
   function openReportModal(deptName) {
     editingDepartment = deptName;
     editingReport = reportForDepartment(deptName);
@@ -562,43 +575,131 @@
       ? ('ステータス：' + editingReport.status + '　最終更新：' + (editingReport.updatedBy || '') + '（' + (editingReport.updatedAt || '') + '）')
       : '新規作成（ログインしていれば誰でも編集できます）';
     $('r-reporterName').value = (editingReport && editingReport.reporterName) ? editingReport.reporterName : (currentUser ? currentUser.name : '');
-    renderCourseRows(editingReport ? editingReport.courses : []);
     $('r-otherContent').value = editingReport ? (editingReport.otherContent || '') : '';
     $('r-issuesContent').value = editingReport ? (editingReport.issuesContent || '') : '';
     renderAttachmentList(editingReport ? (editingReport.attachments || []) : []);
     $('reportModal').classList.remove('hidden');
+    currentDeptCourses = [];
+    $('reportCoursesList').innerHTML = '<div class="rc-hint">講座一覧を読み込み中…</div>';
+    var courses = editingReport ? editingReport.courses : [];
+    loadDeptCoursesForModal(deptName).then(function () { renderCourseRows(courses); });
   }
   function closeReportModal() {
     $('reportModal').classList.add('hidden');
     $('reportCoursesList').innerHTML = '';
     editingDepartment = null;
     editingReport = null;
+    currentDeptCourses = [];
   }
 
-  /** 「直近の講座開催」の1行を追加する。dataを渡すとその内容で初期表示する */
+  function courseOptionLabel_(c) {
+    var d = c.eventDate ? jpDate(c.eventDate) : '開催日未設定';
+    return (c.name || '(無題)') + '（' + d + '）';
+  }
+
+  /**
+   * 「直近の講座開催」の1行を追加する。dataを渡すとその内容で初期表示する。
+   * タイトルはプルダウン(currentDeptCoursesの講座一覧、または「自由入力」)から選択する形式。
+   * 講座を選ぶと開催日を自動入力し、参加者募集フォームが設定されていれば会場／ZOOM人数も
+   * 自動取得する(取得できない場合は手動入力のまま)。
+   */
   function addCourseRow(data) {
     data = data || {};
     var row = document.createElement('div');
     row.className = 'report-course-row';
+
+    // 保存済みタイトルが現在の講座一覧の1件と一致すれば、その講座を選択済みにする
+    var matchedCourse = data.title
+      ? currentDeptCourses.filter(function (c) { return c.name === data.title; })[0]
+      : null;
+
+    var optionsHtml = '<option value="">選択してください</option>';
+    currentDeptCourses.forEach(function (c) {
+      var selectedAttr = matchedCourse && matchedCourse.id === c.id ? ' selected' : '';
+      optionsHtml += '<option value="' + escapeHtml(c.id) + '"' + selectedAttr + '>' + escapeHtml(courseOptionLabel_(c)) + '</option>';
+    });
+    var isCustom = !!(data.title && !matchedCourse);
+    optionsHtml += '<option value="__custom__"' + (isCustom ? ' selected' : '') + '>自由入力…</option>';
+    var showCustomInput = isCustom || !currentDeptCourses.length;
+
     row.innerHTML =
-      '<div class="field"><label>タイトル</label><input type="text" class="rc-title" value="' + escapeHtml(data.title || '') + '"></div>' +
+      '<div class="field">' +
+        '<label>タイトル</label>' +
+        '<select class="rc-title-select">' + optionsHtml + '</select>' +
+        '<input type="text" class="rc-title-custom' + (showCustomInput ? '' : ' hidden') + '" placeholder="タイトルを入力" value="' + escapeHtml(data.title || '') + '">' +
+      '</div>' +
       '<div class="field"><label>開催日</label><input type="date" class="rc-date" value="' + escapeHtml(data.eventDate || '') + '"></div>' +
       '<div class="field"><label>会場人数</label><input type="number" min="0" class="rc-venue" value="' + (data.venueCount || 0) + '"></div>' +
       '<div class="field"><label>ZOOM人数</label><input type="number" min="0" class="rc-zoom" value="' + (data.zoomCount || 0) + '"></div>' +
       '<button type="button" class="btn btn-cancel btn-small">削除</button>';
     row.querySelector('button').addEventListener('click', function () { row.remove(); });
+
+    var selectEl = row.querySelector('.rc-title-select');
+    var customEl = row.querySelector('.rc-title-custom');
+    selectEl.addEventListener('change', function () { applyCourseSelection_(row, selectEl, customEl); });
+
     $('reportCoursesList').appendChild(row);
+  }
+
+  /** プルダウンで講座が選ばれた際に、タイトル・開催日・参加人数(取得できれば)を自動反映する */
+  function applyCourseSelection_(row, selectEl, customEl) {
+    if (selectEl.value === '__custom__') {
+      customEl.classList.remove('hidden');
+      customEl.value = '';
+      customEl.focus();
+      return;
+    }
+    customEl.classList.add('hidden');
+    if (!selectEl.value) { customEl.value = ''; return; }
+
+    var course = currentDeptCourses.filter(function (c) { return c.id === selectEl.value; })[0];
+    if (!course) return;
+    customEl.value = course.name || '';
+    row.querySelector('.rc-date').value = course.eventDate || '';
+
+    if (!course.formSheetUrl) return;
+    var venueInput = row.querySelector('.rc-venue');
+    var zoomInput = row.querySelector('.rc-zoom');
+    venueInput.setAttribute('placeholder', '取得中…');
+    zoomInput.setAttribute('placeholder', '取得中…');
+    callApi('getFormSignupSummary', { sheetUrl: course.formSheetUrl, columnOverride: course.formVenueColumnOverride })
+      .then(function (res) {
+        venueInput.removeAttribute('placeholder');
+        zoomInput.removeAttribute('placeholder');
+        if (!res.ok) { showToast('参加人数を自動取得できませんでした。手動で入力してください'); return; }
+        venueInput.value = res.data.venueCount || 0;
+        zoomInput.value = res.data.zoomCount || 0;
+        showToast('参加人数を自動取得しました');
+      })
+      .catch(function () {
+        venueInput.removeAttribute('placeholder');
+        zoomInput.removeAttribute('placeholder');
+        showToast('参加人数を自動取得できませんでした。手動で入力してください');
+      });
   }
 
   function renderCourseRows(courses) {
     $('reportCoursesList').innerHTML = '';
+    if (!currentDeptCourses.length) {
+      var hint = document.createElement('div');
+      hint.className = 'rc-hint';
+      hint.textContent = 'この担当科に登録済みの講座が見つからなかったため、タイトルは自由入力になります。';
+      $('reportCoursesList').appendChild(hint);
+    }
     (courses || []).forEach(function (c) { addCourseRow(c); });
   }
 
   function collectCoursesFromForm() {
     return Array.prototype.map.call($('reportCoursesList').querySelectorAll('.report-course-row'), function (row) {
+      var selectEl = row.querySelector('.rc-title-select');
+      var customEl = row.querySelector('.rc-title-custom');
+      var title = customEl.value || '';
+      if (selectEl.value && selectEl.value !== '__custom__') {
+        var course = currentDeptCourses.filter(function (c) { return c.id === selectEl.value; })[0];
+        if (course) title = course.name || '';
+      }
       return {
-        title: row.querySelector('.rc-title').value || '',
+        title: title,
         eventDate: row.querySelector('.rc-date').value || '',
         venueCount: Number(row.querySelector('.rc-venue').value) || 0,
         zoomCount: Number(row.querySelector('.rc-zoom').value) || 0
