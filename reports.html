@@ -161,6 +161,7 @@
   .report-course-row .rc-title-custom { margin-top: 6px; }
   .report-course-row button { margin-top: 22px; }
   .rc-hint { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-top: 4px; }
+  .inline-image-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 4px; }
   @media (max-width: 640px) {
     .report-course-row { grid-template-columns: 1fr 1fr; }
   }
@@ -286,11 +287,20 @@
 
     <div class="modal-section-title">その他報告内容</div>
     <textarea id="r-otherContent" rows="4" placeholder="その他、報告しておきたい内容があればご記入ください"></textarea>
+    <div class="inline-image-row">
+      <button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="r-otherContent">🖼 画像を挿入</button>
+      <span class="rc-hint">カーソル位置に [image:...] と挿入されます。PDF化の際にその位置へ画像として差し込まれます。</span>
+    </div>
 
     <div class="modal-section-title">課題・改善点等</div>
     <textarea id="r-issuesContent" rows="4" placeholder="課題や改善点等があればご記入ください"></textarea>
+    <div class="inline-image-row">
+      <button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="r-issuesContent">🖼 画像を挿入</button>
+    </div>
+    <input type="file" id="inlineImageFileInput" class="hidden" accept="image/*">
 
     <div class="modal-section-title">添付ファイル</div>
+    <div class="rc-hint" style="margin-bottom:8px;">画像ファイルを添付すると、PDF化の際に報告内容の後ろに1ページとしてそのまま掲載されます。</div>
     <div id="reportAttachmentList" class="attachment-list"></div>
     <div id="reportAttachmentEmpty" class="attachment-empty hidden">添付ファイルはありません。</div>
     <input type="file" id="reportFileInput" class="hidden">
@@ -405,7 +415,11 @@
     meeting_date_required: '開催日を入力してください。',
     meeting_not_found: '指定の役員会が見つかりませんでした。',
     fiscal_year_required: '対象年度が指定されていません。',
-    compile_failed: 'PDFの作成に失敗しました。Apps ScriptでDrive APIが有効化されているかご確認ください。'
+    compile_failed: 'PDFの作成に失敗しました。Apps ScriptでDrive APIが有効化されているかご確認ください。',
+    no_file: 'ファイルを選択してください。',
+    sheet_not_found: '保存先のシートが見つかりませんでした。GAS側を最新のコードに更新のうえ、再度お試しください。',
+    unauthorized: 'ログイン情報の有効期限が切れています。画面を再読み込みして、もう一度ログインしてください。',
+    not_allowed: 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。'
   };
   function errorMessage(err) {
     if (!err) return '処理に失敗しました。時間をおいて再度お試しください。';
@@ -748,6 +762,52 @@
       });
   }
 
+  /* ---------- 本文中への画像挿入 ---------- */
+  var inlineImageTarget = null; // { textareaId, cursorPos }
+
+  function initInlineImageButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll('.btn-insert-image'), function (btn) {
+      btn.addEventListener('click', function () {
+        var textareaId = btn.getAttribute('data-target');
+        var ta = $(textareaId);
+        // ファイル選択ダイアログでフォーカスが移る前に、挿入位置(カーソル位置)を覚えておく
+        inlineImageTarget = { textareaId: textareaId, cursorPos: (ta.selectionStart != null) ? ta.selectionStart : ta.value.length };
+        $('inlineImageFileInput').click();
+      });
+    });
+    $('inlineImageFileInput').addEventListener('change', uploadInlineImage);
+  }
+
+  function insertInlineImagePlaceholder_(fileId) {
+    if (!inlineImageTarget) return;
+    var ta = $(inlineImageTarget.textareaId);
+    var pos = Math.min(inlineImageTarget.cursorPos, ta.value.length);
+    var token = '[image:' + fileId + ']';
+    ta.value = ta.value.slice(0, pos) + token + ta.value.slice(pos);
+    var newPos = pos + token.length;
+    ta.focus();
+    if (ta.setSelectionRange) ta.setSelectionRange(newPos, newPos);
+    inlineImageTarget = null;
+  }
+
+  function uploadInlineImage(e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !inlineImageTarget) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      callApi('uploadReportInlineImage', { fileName: file.name, mimeType: file.type || 'image/png', base64Data: base64 })
+        .then(function (res) {
+          if (!res.ok) { showToast(errorMessage(res.error)); return; }
+          insertInlineImagePlaceholder_(res.data.fileId);
+          showToast('画像を挿入しました');
+        })
+        .catch(function () { showToast('画像のアップロードに失敗しました'); });
+    };
+    reader.readAsDataURL(file);
+  }
+
   function uploadSelectedAttachment(e) {
     var file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -944,6 +1004,7 @@
     $('btnReportCourseAdd').addEventListener('click', function () { addCourseRow(); });
     $('btnReportAttach').addEventListener('click', function () { $('reportFileInput').click(); });
     $('reportFileInput').addEventListener('change', uploadSelectedAttachment);
+    initInlineImageButtons();
   });
 })();
 </script>
