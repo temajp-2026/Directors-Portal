@@ -28,6 +28,7 @@
   html.fs-xlarge { --fs-scale: 1.24; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--gw-bg); }
+  html { scroll-behavior: smooth; }
   body {
     font-family: 'Roboto', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
     color: var(--gw-text);
@@ -235,6 +236,7 @@
   .prep-legend-top { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--gw-border); }
   .prep-legend-top b { color: var(--gw-text); }
   .prep-checklist { display: flex; flex-direction: column; gap: 8px; }
+  .prep-checklist-more { text-align: right; margin-top: 8px; }
   .prep-row { border: 1px solid var(--gw-border); border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
   .prep-row:hover { border-color: #b9bec6; box-shadow: var(--gw-shadow-1); }
   .prep-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -525,6 +527,9 @@
           <span><b>⑥</b> 支払済み</span>
         </div>
         <div id="prepChecklist" class="prep-checklist"></div>
+        <div id="prepChecklistMore" class="prep-checklist-more hidden">
+          <a href="#courseListSection" id="prepChecklistMoreLink" class="link-small">他○件を講座一覧で見る →</a>
+        </div>
         <div id="prepChartEmpty" class="dash-empty hidden">対象の講座がありません。</div>
         <div id="prepChartError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
         <div id="prepChartLoading" class="dash-empty">読み込み中…</div>
@@ -553,7 +558,7 @@
       </div>
     </div>
 
-    <div class="section-header">
+    <div class="section-header" id="courseListSection">
       <div class="section-title">講座一覧</div>
       <button type="button" class="btn btn-primary" id="btnAddCourse">＋ 新しい講座を追加</button>
     </div>
@@ -1449,12 +1454,24 @@
       var du = daysUntilLocal(c.eventDate);
       return du === null || (du >= -30 && du <= 120);
     });
-    if (!target.length) { $('prepChartEmpty').classList.remove('hidden'); return; }
+    if (!target.length) {
+      $('prepChartEmpty').classList.remove('hidden');
+      $('prepChecklistMore').classList.add('hidden');
+      return;
+    }
     $('prepChartEmpty').classList.add('hidden');
 
     target.sort(function (a, b) { return String(a.eventDate || '').localeCompare(String(b.eventDate || '')); });
 
-    target.slice(0, 12).forEach(function (c) {
+    var PREP_CHECKLIST_LIMIT = 5;
+    if (target.length > PREP_CHECKLIST_LIMIT) {
+      $('prepChecklistMoreLink').textContent = '他' + (target.length - PREP_CHECKLIST_LIMIT) + '件を講座一覧で見る →';
+      $('prepChecklistMore').classList.remove('hidden');
+    } else {
+      $('prepChecklistMore').classList.add('hidden');
+    }
+
+    target.slice(0, PREP_CHECKLIST_LIMIT).forEach(function (c) {
       var inv = findInvoiceForCourse(c, invoices);
       var steps = coursePrepSteps(c, inv);
 
