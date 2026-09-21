@@ -78,6 +78,10 @@
   .recipient { font-size: calc(var(--fs-scale, 1) * 18px); font-weight: 500; color: var(--gw-text); border-bottom: 1px solid var(--gw-border); padding-bottom: 10px; margin-bottom: 22px; }
   .lead-text { font-size: calc(var(--fs-scale, 1) * 13px); line-height: 1.9; color: var(--gw-text); margin: 0 0 6px; }
 
+  .director-message-box { background: var(--gw-blue-tint); border: 1px solid var(--gw-blue); border-radius: 8px; padding: 12px 16px; margin: 16px 0 0; }
+  .director-message-label { font-size: calc(var(--fs-scale, 1) * 11.5px); font-weight: 500; color: var(--gw-blue-dark); margin-bottom: 6px; }
+  .director-message-text { font-size: calc(var(--fs-scale, 1) * 13px); color: var(--gw-text); line-height: 1.7; white-space: pre-wrap; }
+
   .section-title {
     font-size: calc(var(--fs-scale, 1) * 14.5px); font-weight: 500; color: var(--gw-blue-dark);
     background: var(--gw-blue-tint); padding: 8px 14px; margin: 26px 0 0; letter-spacing: 0.02em; border-radius: 8px 8px 0 0;
@@ -156,7 +160,7 @@
 
   @media (max-width: 640px) {
     .a4-page { padding: 30px 20px 36px; }
-    .field-grid { grid-template-columns: 1fr; }
+    .field-grid { grid-template-columns: minmax(0, 1fr); }
     .signature-row { flex-direction: column; align-items: flex-end; }
     .doc-title { font-size: calc(var(--fs-scale, 1) * 20px); }
   }
@@ -209,6 +213,11 @@
       <div class="recipient">特定非営利活動法人　日本繊維商品めんてなんす研究会　殿</div>
 
       <p class="lead-text">下記の通り、研修・講演の実施をお引き受けするとともに、記載の金額にてご請求申し上げます。</p>
+
+      <div id="doc-directorMessageBox" class="director-message-box hidden">
+        <div class="director-message-label">理事より、登壇者様へのメッセージ</div>
+        <div id="doc-directorMessage" class="director-message-text"></div>
+      </div>
 
       <div class="section-title">1. 研修・講演概要</div>
       <table class="doc-table">
@@ -378,7 +387,9 @@
 
   function getIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
-    return params.get('id');
+    var raw = params.get('id');
+    // リンクの前後に余分な空白・改行が付いた状態でアクセスされても正しく動くようにtrimする
+    return raw ? raw.trim() : raw;
   }
 
   function callApi(action, payload) {
@@ -466,6 +477,13 @@
     $('doc-format').textContent = inv.format || '未定';
     $('doc-director').textContent = inv.directorName || '未定';
     $('doc-department').textContent = inv.department || '未定';
+
+    if (inv.directorMessage) {
+      $('doc-directorMessage').textContent = inv.directorMessage;
+      $('doc-directorMessageBox').classList.remove('hidden');
+    } else {
+      $('doc-directorMessageBox').classList.add('hidden');
+    }
 
     currentInvoice = inv;
     var isTravelSeparate = (inv.travelHandling || '別途支給') === '別途支給';

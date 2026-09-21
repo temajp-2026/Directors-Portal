@@ -166,7 +166,7 @@
   }
   .dash-card-wide { grid-column: 1 / -1; }
   .dash-card-title { font-size: calc(var(--fs-scale, 1) * 13px); font-weight: 500; color: var(--gw-text); margin-bottom: 12px; }
-  .dash-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .dash-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .dash-card-title-row .dash-card-title { margin-bottom: 0; }
   .btn-small { padding: 5px 12px; font-size: calc(var(--fs-scale, 1) * 11.5px); }
   .dash-empty { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); padding: 6px 0; }
@@ -376,7 +376,7 @@
   .ov-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 18px; }
   .ov-actions .btn { width: 100%; }
   @media (max-width: 480px) {
-    .ov-actions { grid-template-columns: 1fr; }
+    .ov-actions { grid-template-columns: minmax(0, 1fr); }
   }
 
   .pdf-field { border-top: 1px solid var(--gw-border); padding-top: 14px; margin-top: 4px; }
@@ -399,10 +399,10 @@
 
   @media (max-width: 760px) {
     .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .dashboard-grid { grid-template-columns: 1fr; }
+    .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 480px) {
-    .menu-grid { grid-template-columns: 1fr; }
+    .menu-grid { grid-template-columns: minmax(0, 1fr); }
   }
 
   /* ---------- 振込担当者用 一括印刷 ---------- */
