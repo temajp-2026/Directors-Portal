@@ -397,6 +397,22 @@
     box-shadow: var(--gw-shadow-2);
   }
 
+  /* ---------- スマホ：画面最上部で下にスワイプすると更新 ---------- */
+  .ptr-indicator {
+    position: fixed; top: 0; left: 50%; transform: translate(-50%, -60px);
+    z-index: 70; background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 20px;
+    padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+    box-shadow: var(--gw-shadow-1); font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary);
+    pointer-events: none; white-space: nowrap;
+  }
+  .ptr-spinner {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--gw-border); border-top-color: var(--gw-blue); transition: transform 0.2s;
+  }
+  .ptr-indicator.ptr-ready .ptr-spinner { transform: rotate(180deg); }
+  .ptr-indicator.ptr-loading .ptr-spinner { animation: ptrSpin 0.7s linear infinite; }
+  @keyframes ptrSpin { to { transform: rotate(360deg); } }
+
   @media (max-width: 760px) {
     .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
@@ -413,6 +429,11 @@
   .print-table th, .print-table td { border: 1px solid var(--gw-border); padding: 7px 8px; text-align: left; white-space: nowrap; }
   .print-table th { background: var(--gw-bg); font-weight: 500; }
   .print-table td.amount, .print-table th:last-child, .print-table td:last-child { text-align: right; }
+  /* 振込先一覧は列数が多く、印刷用にnowrapで組んでいるため、画面上(特にスマホ)では
+     横スクロールで全体を確認できるようにする(印刷時は@media printでscroll解除)。 */
+  .print-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px 4px; }
+  .print-table-hint { display: none; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 8px; }
+  @media (max-width: 640px) { .print-table-hint { display: block; } }
   @media print {
     body * { visibility: hidden; }
     #paymentBulkPrintModal, #paymentBulkPrintModal * { visibility: visible; }
@@ -420,6 +441,7 @@
     #paymentBulkPrintModal .modal-panel { max-width: none; max-height: none; box-shadow: none; border: none; padding: 0; }
     .no-print { display: none !important; }
     .print-table { font-size: calc(var(--fs-scale, 1) * 11px); }
+    .print-table-scroll { overflow-x: visible; margin: 0; padding: 0; }
   }
 </style>
 </head>
@@ -823,6 +845,8 @@
     <div id="bulkPrintArea">
       <div class="print-doc-title">支払い待ち請求書　振込先一覧</div>
       <div class="print-doc-sub" id="bulkPrintGeneratedAt"></div>
+      <div class="print-table-hint no-print">→ 横にスワイプすると全項目を確認できます</div>
+      <div class="print-table-scroll">
       <table class="print-table" id="bulkPrintTable">
         <thead>
           <tr>
@@ -845,6 +869,7 @@
           </tr>
         </tfoot>
       </table>
+      </div>
       <div id="bulkPrintEmpty" class="dash-empty hidden">支払い待ちの請求書はありません。</div>
     </div>
   </div>
@@ -997,6 +1022,87 @@
     renderCourses();
     loadMasterData();
     loadDashboard();
+    initPullToRefresh(refreshDashboardData);
+  }
+
+  /** プルダウン更新用：ダッシュボード全体(講座一覧・カレンダー・お知らせ等)を再読み込みする */
+  function refreshDashboardData() {
+    renderCourses();
+    loadMasterData();
+    loadDashboard();
+    // 体感的な更新完了のフィードバックとして、最低限インジケーターを表示する時間を確保する
+    // (loadDashboard内の各callApiは個別に発火するfire-and-forgetのため、全完了を厳密には待たない)
+    return new Promise(function (resolve) { setTimeout(resolve, 500); });
+  }
+
+  /**
+   * スマホでページ最上部にいる状態から下にスワイプすると、onRefreshを呼んでデータを再取得する
+   * 「プルダウン・リフレッシュ」を実装する(ネイティブアプリ相当のUX)。
+   * モーダル表示中や、ページが最上部でない場合は発動しない。
+   */
+  var ptrInitialized = false;
+  function initPullToRefresh(onRefresh) {
+    if (ptrInitialized) return;
+    ptrInitialized = true;
+    var THRESHOLD = 64, MAX_PULL = 90, HIDE_Y = -60;
+    var startY = null, pulling = false, refreshing = false;
+
+    var indicator = document.createElement('div');
+    indicator.className = 'ptr-indicator';
+    indicator.innerHTML = '<span class="ptr-spinner"></span><span class="ptr-label">引っ張って更新</span>';
+    document.body.appendChild(indicator);
+    var labelEl = indicator.querySelector('.ptr-label');
+
+    function isModalOpen() { return !!document.querySelector('.modal-overlay:not(.hidden)'); }
+    function atTop() { return (window.pageYOffset || document.documentElement.scrollTop || 0) <= 0; }
+    function setY(y, withTransition) {
+      indicator.style.transition = withTransition ? 'transform 0.2s ease-out' : 'none';
+      indicator.style.transform = 'translate(-50%, ' + y + 'px)';
+    }
+
+    document.addEventListener('touchstart', function (e) {
+      if (refreshing || isModalOpen() || !atTop() || !e.touches || e.touches.length !== 1) { startY = null; pulling = false; return; }
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+      if (!pulling || startY === null || refreshing) return;
+      if (isModalOpen() || !atTop()) { pulling = false; setY(HIDE_Y, true); return; }
+      var delta = e.touches[0].clientY - startY;
+      if (delta <= 0) { setY(HIDE_Y, true); return; }
+      var pulled = Math.min(delta * 0.5, MAX_PULL);
+      setY(HIDE_Y + pulled, false);
+      var ready = pulled >= THRESHOLD;
+      indicator.classList.toggle('ptr-ready', ready);
+      labelEl.textContent = ready ? '離して更新' : '引っ張って更新';
+      if (delta > 4 && e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    function finishPull() {
+      pulling = false;
+      var ready = indicator.classList.contains('ptr-ready');
+      startY = null;
+      if (ready && !refreshing) {
+        refreshing = true;
+        indicator.classList.add('ptr-loading');
+        labelEl.textContent = '更新中…';
+        setY(20, true);
+        Promise.resolve().then(onRefresh).catch(function () {}).then(function () {
+          labelEl.textContent = '更新しました';
+          setTimeout(function () {
+            refreshing = false;
+            indicator.classList.remove('ptr-ready', 'ptr-loading');
+            setY(HIDE_Y, true);
+          }, 500);
+        });
+      } else {
+        indicator.classList.remove('ptr-ready');
+        setY(HIDE_Y, true);
+      }
+    }
+    document.addEventListener('touchend', finishPull);
+    document.addEventListener('touchcancel', finishPull);
   }
 
   /** 担当科・研修形式・ステータスのプルダウン選択肢をSS(スプレッドシート)から取得する */

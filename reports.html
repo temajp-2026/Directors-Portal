@@ -163,7 +163,8 @@
   .rc-hint { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-top: 4px; }
   .inline-image-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 4px; }
   @media (max-width: 640px) {
-    .report-course-row { grid-template-columns: 1fr 1fr; }
+    .report-course-row { grid-template-columns: 1fr; }
+    .report-course-row button { margin-top: 4px; justify-self: end; }
   }
 
   .attachment-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -196,6 +197,22 @@
     background: #323232; color: #ffffff; font-size: calc(var(--fs-scale, 1) * 13px); padding: 10px 20px; border-radius: 8px; z-index: 60;
     box-shadow: var(--gw-shadow-2);
   }
+
+  /* ---------- スマホ：画面最上部で下にスワイプすると更新 ---------- */
+  .ptr-indicator {
+    position: fixed; top: 0; left: 50%; transform: translate(-50%, -60px);
+    z-index: 70; background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 20px;
+    padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+    box-shadow: var(--gw-shadow-1); font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary);
+    pointer-events: none; white-space: nowrap;
+  }
+  .ptr-spinner {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--gw-border); border-top-color: var(--gw-blue); transition: transform 0.2s;
+  }
+  .ptr-indicator.ptr-ready .ptr-spinner { transform: rotate(180deg); }
+  .ptr-indicator.ptr-loading .ptr-spinner { animation: ptrSpin 0.7s linear infinite; }
+  @keyframes ptrSpin { to { transform: rotate(360deg); } }
 
   @media (max-width: 720px) {
     .report-grid { grid-template-columns: 1fr; }
@@ -441,6 +458,77 @@
     currentMonth = defaultMonth();
     $('monthSelect').value = currentMonth;
     loadDepartmentsOnce().then(loadMonthData);
+    initPullToRefresh(loadMonthData);
+  }
+
+  /**
+   * スマホでページ最上部にいる状態から下にスワイプすると、onRefreshを呼んでデータを再取得する
+   * 「プルダウン・リフレッシュ」を実装する(ネイティブアプリ相当のUX)。
+   * モーダル表示中や、ページが最上部でない場合は発動しない。
+   */
+  var ptrInitialized = false;
+  function initPullToRefresh(onRefresh) {
+    if (ptrInitialized) return;
+    ptrInitialized = true;
+    var THRESHOLD = 64, MAX_PULL = 90, HIDE_Y = -60;
+    var startY = null, pulling = false, refreshing = false;
+
+    var indicator = document.createElement('div');
+    indicator.className = 'ptr-indicator';
+    indicator.innerHTML = '<span class="ptr-spinner"></span><span class="ptr-label">引っ張って更新</span>';
+    document.body.appendChild(indicator);
+    var labelEl = indicator.querySelector('.ptr-label');
+
+    function isModalOpen() { return !!document.querySelector('.modal-overlay:not(.hidden)'); }
+    function atTop() { return (window.pageYOffset || document.documentElement.scrollTop || 0) <= 0; }
+    function setY(y, withTransition) {
+      indicator.style.transition = withTransition ? 'transform 0.2s ease-out' : 'none';
+      indicator.style.transform = 'translate(-50%, ' + y + 'px)';
+    }
+
+    document.addEventListener('touchstart', function (e) {
+      if (refreshing || isModalOpen() || !atTop() || !e.touches || e.touches.length !== 1) { startY = null; pulling = false; return; }
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+      if (!pulling || startY === null || refreshing) return;
+      if (isModalOpen() || !atTop()) { pulling = false; setY(HIDE_Y, true); return; }
+      var delta = e.touches[0].clientY - startY;
+      if (delta <= 0) { setY(HIDE_Y, true); return; }
+      var pulled = Math.min(delta * 0.5, MAX_PULL);
+      setY(HIDE_Y + pulled, false);
+      var ready = pulled >= THRESHOLD;
+      indicator.classList.toggle('ptr-ready', ready);
+      labelEl.textContent = ready ? '離して更新' : '引っ張って更新';
+      if (delta > 4 && e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    function finishPull() {
+      pulling = false;
+      var ready = indicator.classList.contains('ptr-ready');
+      startY = null;
+      if (ready && !refreshing) {
+        refreshing = true;
+        indicator.classList.add('ptr-loading');
+        labelEl.textContent = '更新中…';
+        setY(20, true);
+        Promise.resolve().then(onRefresh).catch(function () {}).then(function () {
+          labelEl.textContent = '更新しました';
+          setTimeout(function () {
+            refreshing = false;
+            indicator.classList.remove('ptr-ready', 'ptr-loading');
+            setY(HIDE_Y, true);
+          }, 500);
+        });
+      } else {
+        indicator.classList.remove('ptr-ready');
+        setY(HIDE_Y, true);
+      }
+    }
+    document.addEventListener('touchend', finishPull);
+    document.addEventListener('touchcancel', finishPull);
   }
 
   function handleCredentialResponse(response) {
