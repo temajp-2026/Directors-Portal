@@ -387,7 +387,9 @@
 
   function getIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
-    return params.get('id');
+    var raw = params.get('id');
+    // リンクの前後に余分な空白・改行が付いた状態でアクセスされても正しく動くようにtrimする
+    return raw ? raw.trim() : raw;
   }
 
   function callApi(action, payload) {

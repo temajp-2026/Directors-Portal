@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月次報告書｜理事ポータル</title>
+<script>(function () {
+  try {
+    var v = localStorage.getItem('temaFontSizePref');
+    if (v === 'large' || v === 'xlarge') document.documentElement.classList.add('fs-' + v);
+  } catch (e) {}
+})();</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --gw-blue: #1a73e8; --gw-blue-dark: #1765cc; --gw-blue-tint: #e8f0fe;
+    --gw-text: #202124; --gw-text-secondary: #5f6368;
+    --gw-border: #dadce0; --gw-bg: #f8f9fa; --gw-surface: #ffffff;
+    --gw-green: #188038; --gw-green-tint: #e6f4ea;
+    --gw-yellow: #b06000; --gw-yellow-tint: #fef7e0;
+    --gw-red: #c5221f; --gw-red-tint: #fce8e6;
+    --gw-shadow-1: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+    --gw-shadow-2: 0 1px 3px 0 rgba(60,64,67,.30), 0 4px 8px 3px rgba(60,64,67,.15);
+    --fs-scale: 1;
+  }
+  html.fs-large { --fs-scale: 1.12; }
+  html.fs-xlarge { --fs-scale: 1.24; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--gw-bg); }
+  body { font-family: 'Roboto', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif; color: var(--gw-text); }
+
+  .login-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-card {
+    background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 16px; box-shadow: var(--gw-shadow-2);
+    padding: 40px 36px; text-align: center; max-width: 380px; width: 100%;
+  }
+  .login-title { font-size: calc(var(--fs-scale, 1) * 20px); font-weight: 500; color: var(--gw-text); margin: 0 0 6px; }
+  .login-sub { font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text-secondary); margin: 0 0 24px; line-height: 1.7; }
+  .login-error {
+    margin-top: 18px; font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-red); background: var(--gw-red-tint);
+    border: 1px solid #f6b8b5; border-radius: 8px; padding: 10px 12px; display: none;
+  }
+
+  .auth-check-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--gw-surface); }
+  .splash-inner {
+    background: var(--gw-surface); border-radius: 16px; padding: 40px 56px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+    box-shadow: var(--gw-shadow-2); border: 1px solid var(--gw-border);
+  }
+  .splash-dots { display: flex; gap: 7px; }
+  .splash-dots span { width: 8px; height: 8px; border-radius: 50%; opacity: 0.35; animation: splashPulse 1.1s ease-in-out infinite; }
+  .splash-dots span:nth-child(1) { background: #4285f4; }
+  .splash-dots span:nth-child(2) { background: #ea4335; animation-delay: 0.15s; }
+  .splash-dots span:nth-child(3) { background: #fbbc04; animation-delay: 0.3s; }
+  @keyframes splashPulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+  .splash-title { font-size: calc(var(--fs-scale, 1) * 15px); color: var(--gw-text-secondary); }
+
+  .app-header {
+    background: var(--gw-surface); color: var(--gw-text); padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    border-bottom: 1px solid var(--gw-border);
+  }
+  .header-left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .app-title { font-size: calc(var(--fs-scale, 1) * 17px); font-weight: 500; letter-spacing: 0; }
+  .back-link { color: var(--gw-blue); font-size: calc(var(--fs-scale, 1) * 12px); text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  .user-chip { display: flex; align-items: center; gap: 10px; font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text-secondary); }
+  .user-chip button {
+    background: transparent; border: 1px solid var(--gw-border); color: var(--gw-text-secondary);
+    border-radius: 20px; padding: 6px 14px; font-size: calc(var(--fs-scale, 1) * 12px); cursor: pointer;
+  }
+  .user-chip button:hover { background: var(--gw-bg); border-color: #c4c7cc; }
+
+  .fontsize-toggle { display: flex; align-items: center; gap: 4px; }
+  .fontsize-toggle-label { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-right: 2px; white-space: nowrap; }
+  .fs-btn {
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 11.5px); font-weight: 500;
+    padding: 5px 10px; border-radius: 14px; border: 1px solid var(--gw-border); background: var(--gw-surface);
+    color: var(--gw-text-secondary); cursor: pointer;
+  }
+  .fs-btn:hover { background: var(--gw-bg); }
+  .fs-btn.active { background: var(--gw-blue); color: #ffffff; border-color: var(--gw-blue); }
+  .fs-btn.active:hover { background: var(--gw-blue-dark); }
+  @media (max-width: 480px) { .fontsize-toggle-label { display: none; } }
+
+  .app-body { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+  .hidden { display: none !important; }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .section-title { font-size: calc(var(--fs-scale, 1) * 16px); font-weight: 500; color: var(--gw-text); }
+  .section-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .btn {
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13.5px); font-weight: 500;
+    padding: 10px 20px; border-radius: 20px; border: 1px solid transparent; cursor: pointer;
+  }
+  .btn-small { padding: 6px 14px; font-size: calc(var(--fs-scale, 1) * 12px); border-radius: 16px; }
+  .btn-primary { background: var(--gw-blue); color: #ffffff; }
+  .btn-primary:hover { background: var(--gw-blue-dark); box-shadow: var(--gw-shadow-1); }
+  .btn-outline { background: var(--gw-surface); color: var(--gw-blue); border-color: var(--gw-border); }
+  .btn-outline:hover { background: var(--gw-blue-tint); border-color: var(--gw-blue-tint); }
+  .btn-cancel { background: var(--gw-surface); color: var(--gw-text-secondary); border-color: var(--gw-border); }
+  .btn-cancel:hover { background: var(--gw-bg); }
+  .btn-danger-outline { background: var(--gw-surface); color: var(--gw-red); border-color: var(--gw-border); }
+  .btn-danger-outline:hover { background: var(--gw-red-tint); }
+  .btn:disabled { opacity: 0.6; cursor: default; }
+
+  input[type="text"], input[type="date"], input[type="month"], select {
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13px);
+    padding: 9px 12px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface); color: var(--gw-text);
+  }
+  input:focus, select:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; border-color: var(--gw-blue); }
+  .field-grid.single { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 4px; }
+  .field label { font-size: calc(var(--fs-scale, 1) * 12px); font-weight: 500; color: var(--gw-text-secondary); display: block; margin-bottom: 4px; }
+  .field input { width: 100%; }
+
+  .legend-box { background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .legend-title { font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text-secondary); }
+  .legend-title b { color: var(--gw-text); font-weight: 500; }
+  .legend-title.past-deadline { color: var(--gw-red); }
+  .legend-title.past-deadline b { color: var(--gw-red); }
+
+  .missing-banner { background: var(--gw-yellow-tint); border: 1px solid #f4d78a; border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-yellow); }
+  .missing-banner.past-deadline { background: var(--gw-red-tint); border-color: #f6b8b5; color: var(--gw-red); }
+  .missing-banner .missing-title { font-weight: 500; margin-bottom: 8px; }
+  .missing-chip { display: inline-block; background: rgba(0,0,0,0.06); border-radius: 999px; padding: 3px 10px; margin: 0 6px 6px 0; font-size: calc(var(--fs-scale, 1) * 11.5px); }
+
+  .report-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .report-card {
+    background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 12px; padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .report-card-title { font-size: calc(var(--fs-scale, 1) * 14px); font-weight: 500; color: var(--gw-text); }
+  .report-card-meta { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); line-height: 1.5; flex: 1; }
+  .status-badge { display: inline-block; font-size: calc(var(--fs-scale, 1) * 11px); font-weight: 500; padding: 3px 10px; border-radius: 999px; align-self: flex-start; }
+  .status-report-提出済み { background: var(--gw-green-tint); color: var(--gw-green); }
+  .status-report-下書き { background: var(--gw-yellow-tint); color: var(--gw-yellow); }
+  .status-report-未提出 { background: var(--gw-bg); color: var(--gw-text-secondary); }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(32,33,36,0.5);
+    display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 50;
+  }
+  .modal-panel { background: var(--gw-surface); width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; border-radius: 16px; padding: 26px 30px 30px; box-shadow: var(--gw-shadow-2); }
+  .modal-title { font-size: calc(var(--fs-scale, 1) * 17px); font-weight: 500; color: var(--gw-text); margin-bottom: 4px; }
+  .modal-sub { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin-bottom: 16px; line-height: 1.6; }
+  .modal-section-title { font-size: calc(var(--fs-scale, 1) * 13px); font-weight: 500; color: var(--gw-text); margin: 20px 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--gw-border); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+
+  .editor-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .editor-toolbar button {
+    font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 12.5px);
+    padding: 6px 12px; border-radius: 8px; border: 1px solid var(--gw-border); background: var(--gw-surface); color: var(--gw-text); cursor: pointer;
+  }
+  .editor-toolbar button:hover { background: var(--gw-bg); }
+  .report-editor {
+    min-height: 220px; border: 1px solid var(--gw-border); border-radius: 8px; padding: 12px 14px;
+    font-size: calc(var(--fs-scale, 1) * 13.5px); line-height: 1.7; background: var(--gw-surface); color: var(--gw-text);
+  }
+  .report-editor:focus { outline: 2px solid var(--gw-blue); outline-offset: -1px; }
+  .report-editor h2, .report-editor h3 { margin: 0.6em 0 0.3em; }
+  .report-editor ul, .report-editor ol { margin: 0.4em 0; padding-left: 1.4em; }
+  .report-editor mark, .report-editor span { border-radius: 2px; }
+
+  .attachment-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .attachment-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--gw-bg); border: 1px solid var(--gw-border); border-radius: 8px; padding: 8px 12px;
+    font-size: calc(var(--fs-scale, 1) * 12.5px);
+  }
+  .attachment-row a { color: var(--gw-blue); text-decoration: none; word-break: break-all; }
+  .attachment-row a:hover { text-decoration: underline; }
+  .attachment-empty { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin-bottom: 10px; }
+
+  .board-meeting-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+  .board-meeting-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--gw-bg); border: 1px solid var(--gw-border); border-radius: 8px; padding: 8px 12px;
+    font-size: calc(var(--fs-scale, 1) * 12.5px);
+  }
+  .board-meeting-empty { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin-bottom: 10px; }
+
+  .empty-state { text-align: center; color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 13px); padding: 40px 0; background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 12px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #323232; color: #ffffff; font-size: calc(var(--fs-scale, 1) * 13px); padding: 10px 20px; border-radius: 8px; z-index: 60;
+    box-shadow: var(--gw-shadow-2);
+  }
+
+  @media (max-width: 720px) {
+    .report-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="authCheckShell" class="auth-check-shell">
+  <div class="splash-inner">
+    <div class="splash-title">理事ポータル</div>
+    <div class="splash-dots"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<div id="loginShell" class="login-shell hidden">
+  <div class="login-card">
+    <div class="login-title">月次報告書</div>
+    <p class="login-sub">特定非営利活動法人　日本繊維商品めんてなんす研究会<br>Googleアカウントでログインしてください。<br>あらかじめ登録された理事のみ利用できます。</p>
+    <div id="gsiButton" style="display:flex; justify-content:center;"></div>
+    <div id="androidChromeLinkWrap" class="hidden" style="text-align:center; margin-top:10px;">
+      <a href="#" id="androidChromeLink" style="font-size: calc(var(--fs-scale, 1) * 12px); color:var(--gw-text-secondary); text-decoration:underline;">LINEなどのアプリ内で開いている場合はこちら（Chromeで開く）</a>
+    </div>
+    <div id="gsiLoadError" class="login-error">
+      Googleのログインボタンを読み込めませんでした。通信環境をご確認のうえ、ページを再読み込みしてください。<br>
+      LINEやGmailアプリなどのアプリ内ブラウザで開いている場合は、上の「Chromeで開く」リンク、または画面右上のメニューから「ブラウザで開く」を選び、Chromeなど通常のブラウザで開き直してください。
+      <div style="margin-top:10px;"><button type="button" class="btn btn-outline" id="btnGsiReload">ページを再読み込み</button></div>
+    </div>
+    <div id="loginError" class="login-error"></div>
+  </div>
+</div>
+
+<div id="appShell" class="hidden">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="app-title">月次報告書</div>
+      <a class="back-link" href="index.html">← 理事ポータルへ戻る</a>
+    </div>
+    <div class="fontsize-toggle" role="group" aria-label="文字サイズ切り替え">
+      <span class="fontsize-toggle-label">文字サイズ</span>
+      <button type="button" class="fs-btn" data-fs="normal">標準</button>
+      <button type="button" class="fs-btn" data-fs="large">大</button>
+      <button type="button" class="fs-btn" data-fs="xlarge">特大</button>
+    </div>
+    <div class="user-chip">
+      <span id="userLabel"></span>
+      <button type="button" id="btnLogout">ログアウト</button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <div class="section-header">
+      <div class="section-title">月次報告書</div>
+      <div class="section-tools">
+        <input type="month" id="monthSelect">
+        <button type="button" class="btn btn-outline" id="btnBoardSettings">役員会の設定</button>
+        <button type="button" class="btn btn-primary" id="btnCompilePdf">月次PDF作成</button>
+      </div>
+    </div>
+
+    <div class="legend-box">
+      <div class="legend-title" id="deadlineInfo">読み込み中…</div>
+    </div>
+
+    <div id="missingBanner" class="missing-banner hidden">
+      <div class="missing-title">⚠ 未提出の科があります</div>
+      <div id="missingList"></div>
+    </div>
+
+    <div id="reportGrid" class="report-grid"></div>
+    <div id="reportEmpty" class="empty-state hidden">担当科が登録されていません。「Departments」シートをご確認ください。</div>
+  </div>
+</div>
+
+<!-- 報告書編集モーダル -->
+<div id="reportModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 760px;">
+    <div class="modal-title" id="reportModalDept">担当科名</div>
+    <div class="modal-sub" id="reportModalMeta"></div>
+
+    <div class="editor-toolbar">
+      <button type="button" id="btnFmtH3">見出し</button>
+      <button type="button" id="btnFmtBold"><b>太字</b></button>
+      <button type="button" id="btnFmtMark">マーカー</button>
+      <button type="button" id="btnFmtList">箇条書き</button>
+    </div>
+    <div id="reportEditor" class="report-editor" contenteditable="true"></div>
+
+    <div class="modal-section-title">添付ファイル</div>
+    <div id="reportAttachmentList" class="attachment-list"></div>
+    <div id="reportAttachmentEmpty" class="attachment-empty hidden">添付ファイルはありません。</div>
+    <input type="file" id="reportFileInput" class="hidden">
+    <button type="button" class="btn btn-outline btn-small" id="btnReportAttach">＋ ファイルを添付</button>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnReportCancel">閉じる</button>
+      <button type="button" class="btn btn-outline" id="btnReportSaveDraft">下書き保存</button>
+      <button type="button" class="btn btn-primary" id="btnReportSubmit">提出する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 役員会の設定モーダル -->
+<div id="boardModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 480px;">
+    <div class="modal-title">役員会の設定</div>
+    <div class="modal-sub">役員会の開催日を登録すると、各月度の報告書の提出期限(その月度以降で最初の役員会の2日前)が自動で計算されます。</div>
+
+    <div id="boardMeetingList" class="board-meeting-list"></div>
+    <div id="boardMeetingEmpty" class="board-meeting-empty hidden">役員会の開催日が登録されていません。</div>
+
+    <div class="modal-section-title">開催日を追加</div>
+    <div class="field-grid single">
+      <div class="field"><label>開催日</label><input type="date" id="bm-date"></div>
+      <div class="field"><label>メモ（任意）</label><input type="text" id="bm-note" placeholder="例：定例役員会"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnBoardClose">閉じる</button>
+      <button type="button" class="btn btn-primary" id="btnBoardAdd">追加</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var CLIENT_ID = '199375582652-12dgtvao2mo6070n5gup3mrqrpeq9lif.apps.googleusercontent.com';
+  var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxOkLQhgds7ULE2GU3lf_oAUcQXz-ZdGeNp8E7SekFzDpN6DiReXhIczR43H-B95a-0nA/exec';
+
+  var currentUser = null;
+  var currentIdToken = null;
+  var departments = [];
+  var reports = [];
+  var boardMeetings = [];
+  var currentMonth = '';
+  var editingDepartment = null;
+  var editingReport = null;
+
+  // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、同じタブ内で移動してきた場合は再ログインを求めない。
+  var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  function saveAuthToStorage() {
+    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+  }
+  function clearAuthStorage() {
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
+  }
+  function loadAuthFromStorage() {
+    try {
+      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function $(id) { return document.getElementById(id); }
+
+  function showToast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function () { t.classList.add('hidden'); }, 2600);
+  }
+
+  function callApi(action, payload) {
+    return fetch(GAS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, idToken: currentIdToken, payload: payload || {} })
+    }).then(function (r) { return r.json(); });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function defaultMonth() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function jpMonth(m) {
+    if (!m) return '';
+    var parts = m.split('-');
+    return Number(parts[0]) + '年' + Number(parts[1]) + '月度';
+  }
+  function jpDate(dateStr) {
+    if (!dateStr) return '';
+    var parts = String(dateStr).split('-');
+    if (parts.length !== 3) return dateStr;
+    return Number(parts[0]) + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+  }
+
+  var ERROR_MESSAGES = {
+    empty_report: '本文が空です。本文を入力するか、添付ファイルを追加してから提出してください。',
+    no_submitted_reports: 'この月度で「提出済み」の報告書がまだありません。',
+    report_not_found: '報告書が見つかりませんでした。画面を再読み込みしてください。',
+    department_required: '担当科が指定されていません。',
+    month_required: '月度が指定されていません。',
+    meeting_date_required: '開催日を入力してください。',
+    meeting_not_found: '指定の役員会が見つかりませんでした。',
+    compile_failed: 'PDFの作成に失敗しました。Apps ScriptでDrive APIが有効化されているかご確認ください。'
+  };
+  function errorMessage(err) {
+    if (!err) return '処理に失敗しました。時間をおいて再度お試しください。';
+    var key = String(err).split(':')[0];
+    return ERROR_MESSAGES[key] || ('処理に失敗しました（' + err + '）');
+  }
+
+  /* ---------- ログイン ---------- */
+  function showLoginShell() {
+    $('authCheckShell').classList.add('hidden');
+    $('appShell').classList.add('hidden');
+    $('loginShell').classList.remove('hidden');
+  }
+  function showAppShell() {
+    $('authCheckShell').classList.add('hidden');
+    $('loginShell').classList.add('hidden');
+    $('appShell').classList.remove('hidden');
+    $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    currentMonth = defaultMonth();
+    $('monthSelect').value = currentMonth;
+    loadDepartmentsOnce().then(loadMonthData);
+  }
+
+  function handleCredentialResponse(response) {
+    currentIdToken = response.credential;
+    $('loginError').style.display = 'none';
+    callApi('listDepartments').then(function (res) {
+      if (!res.ok) {
+        var msg = res.error === 'not_allowed'
+          ? 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。'
+          : 'ログインに失敗しました。時間をおいて再度お試しください。';
+        var el = $('loginError');
+        el.textContent = msg;
+        el.style.display = 'block';
+        currentIdToken = null;
+        return;
+      }
+      currentUser = res.user;
+      departments = res.data || [];
+      saveAuthToStorage();
+      showAppShell();
+    }).catch(function () {
+      var el = $('loginError');
+      el.textContent = 'サーバーに接続できませんでした。GAS_API_URLの設定をご確認ください。';
+      el.style.display = 'block';
+    });
+  }
+
+  function logout() {
+    currentUser = null;
+    currentIdToken = null;
+    clearAuthStorage();
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.disableAutoSelect();
+    }
+    showLoginShell();
+  }
+
+  function tryAutoLogin() {
+    var cached = loadAuthFromStorage();
+    if (!cached || !cached.idToken) { showLoginShell(); return; }
+    currentIdToken = cached.idToken;
+    currentUser = cached.user;
+    callApi('listDepartments').then(function (res) {
+      if (!res.ok) {
+        clearAuthStorage(); currentIdToken = null; currentUser = null;
+        showLoginShell();
+        return;
+      }
+      departments = res.data || [];
+      showAppShell();
+    }).catch(function () {
+      clearAuthStorage(); currentIdToken = null; currentUser = null;
+      showLoginShell();
+    });
+  }
+
+  /* ---------- データ読み込み ---------- */
+  function loadDepartmentsOnce() {
+    return callApi('listDepartments').then(function (res) {
+      if (res.ok) departments = res.data || [];
+    }).catch(function () {});
+  }
+
+  function loadMonthData() {
+    return Promise.all([
+      callApi('listReports', { month: currentMonth }),
+      callApi('getReportSubmissionStatus', { month: currentMonth })
+    ]).then(function (results) {
+      reports = (results[0] && results[0].ok) ? (results[0].data || []) : [];
+      var statusData = (results[1] && results[1].ok) ? results[1].data : null;
+      renderDeadlineInfo(statusData);
+      renderReportGrid();
+    }).catch(function () {
+      showToast('データの取得に失敗しました');
+    });
+  }
+
+  function renderDeadlineInfo(statusData) {
+    var infoEl = $('deadlineInfo');
+    var bannerEl = $('missingBanner');
+    var pastDeadline = !!(statusData && statusData.pastDeadline);
+
+    if (!statusData || !statusData.deadline) {
+      infoEl.className = 'legend-title';
+      infoEl.innerHTML = '<b>' + jpMonth(currentMonth) + '</b>　提出期限：未設定（「役員会の設定」から役員会の開催日を登録してください）';
+    } else {
+      infoEl.className = 'legend-title' + (pastDeadline ? ' past-deadline' : '');
+      infoEl.innerHTML = '<b>' + jpMonth(currentMonth) + '</b>　提出期限：<b>' + jpDate(statusData.deadline) + '</b>'
+        + '（' + jpDate(statusData.meetingDate) + 'の役員会の2日前）' + (pastDeadline ? '　※期限を過ぎています' : '');
+    }
+
+    // 提出期限(役員会日程)が未設定でも、未提出の科がある場合はアラートとして表示する。
+    var missing = (statusData && statusData.missingDepartments) || [];
+    if (missing.length) {
+      bannerEl.classList.remove('hidden');
+      bannerEl.classList.toggle('past-deadline', pastDeadline);
+      $('missingList').innerHTML = missing.map(function (d) {
+        return '<span class="missing-chip">' + escapeHtml(d) + '</span>';
+      }).join('');
+    } else {
+      bannerEl.classList.add('hidden');
+    }
+  }
+
+  function reportForDepartment(dept) {
+    return reports.filter(function (r) { return r.department === dept; })[0] || null;
+  }
+
+  function renderReportGrid() {
+    var grid = $('reportGrid');
+    grid.innerHTML = '';
+    $('reportEmpty').classList.toggle('hidden', departments.length > 0);
+    departments.forEach(function (d) {
+      var r = reportForDepartment(d.name);
+      var status = r ? r.status : '未提出';
+      var card = document.createElement('div');
+      card.className = 'report-card';
+      var meta = r
+        ? ('最終更新：' + escapeHtml(r.updatedBy || '') + '<br>' + escapeHtml(r.updatedAt || ''))
+        : 'まだ報告書が作成されていません。';
+      card.innerHTML =
+        '<span class="status-badge status-report-' + status + '">' + status + '</span>' +
+        '<div class="report-card-title">' + escapeHtml(d.name) + '</div>' +
+        '<div class="report-card-meta">' + meta + '</div>' +
+        '<button type="button" class="btn btn-outline btn-small" style="align-self:flex-start;">編集する</button>';
+      card.querySelector('button').addEventListener('click', function () { openReportModal(d.name); });
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---------- 報告書編集 ---------- */
+  function openReportModal(deptName) {
+    editingDepartment = deptName;
+    editingReport = reportForDepartment(deptName);
+    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + deptName;
+    $('reportModalMeta').textContent = editingReport
+      ? ('ステータス：' + editingReport.status + '　最終更新：' + (editingReport.updatedBy || '') + '（' + (editingReport.updatedAt || '') + '）')
+      : '新規作成（ログインしていれば誰でも編集できます）';
+    $('reportEditor').innerHTML = editingReport ? (editingReport.bodyHtml || '') : '';
+    renderAttachmentList(editingReport ? (editingReport.attachments || []) : []);
+    $('reportModal').classList.remove('hidden');
+  }
+  function closeReportModal() {
+    $('reportModal').classList.add('hidden');
+    editingDepartment = null;
+    editingReport = null;
+  }
+
+  function renderAttachmentList(attachments) {
+    var listEl = $('reportAttachmentList');
+    listEl.innerHTML = '';
+    $('reportAttachmentEmpty').classList.toggle('hidden', !!(attachments && attachments.length));
+    (attachments || []).forEach(function (a) {
+      var row = document.createElement('div');
+      row.className = 'attachment-row';
+      row.innerHTML =
+        '<a href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + escapeHtml(a.fileName) + '</a>' +
+        '<button type="button" class="btn btn-cancel btn-small">削除</button>';
+      row.querySelector('button').addEventListener('click', function () { deleteAttachment(a.fileId); });
+      listEl.appendChild(row);
+    });
+  }
+
+  /** まだ報告書が保存されていない(新規)場合は、先に下書きとして保存してIDを確定させる */
+  function ensureReportId() {
+    if (editingReport && editingReport.id) return Promise.resolve(editingReport.id);
+    var bodyHtml = $('reportEditor').innerHTML;
+    return callApi('saveReport', { department: editingDepartment, month: currentMonth, bodyHtml: bodyHtml, status: '下書き' })
+      .then(function (res) {
+        if (!res.ok) { showToast(errorMessage(res.error)); throw new Error(res.error); }
+        editingReport = editingReport || {};
+        editingReport.id = res.data.id;
+        editingReport.status = res.data.status;
+        editingReport.attachments = editingReport.attachments || [];
+        return res.data.id;
+      });
+  }
+
+  function uploadSelectedAttachment(e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      ensureReportId().then(function (reportId) {
+        return callApi('uploadReportAttachment', {
+          reportId: reportId, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data: base64
+        });
+      }).then(function (res) {
+        if (!res.ok) { showToast(errorMessage(res.error)); return; }
+        editingReport.attachments = res.data.attachments;
+        renderAttachmentList(editingReport.attachments);
+        showToast('ファイルを添付しました');
+      }).catch(function () {});
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function deleteAttachment(fileId) {
+    if (!editingReport || !editingReport.id) return;
+    if (!confirm('この添付ファイルを削除しますか？')) return;
+    callApi('deleteReportAttachment', { reportId: editingReport.id, fileId: fileId }).then(function (res) {
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      editingReport.attachments = res.data.attachments;
+      renderAttachmentList(editingReport.attachments);
+      showToast('削除しました');
+    }).catch(function () {});
+  }
+
+  function execEditorCmd(cmd) {
+    $('reportEditor').focus();
+    if (cmd === 'h3') {
+      document.execCommand('formatBlock', false, '<h3>');
+    } else if (cmd === 'bold') {
+      document.execCommand('bold');
+    } else if (cmd === 'mark') {
+      try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+      document.execCommand('hiliteColor', false, '#fff59d');
+    } else if (cmd === 'ul') {
+      document.execCommand('insertUnorderedList');
+    }
+  }
+
+  function saveReportWithStatus(status) {
+    var bodyHtml = $('reportEditor').innerHTML;
+    callApi('saveReport', { department: editingDepartment, month: currentMonth, bodyHtml: bodyHtml, status: status }).then(function (res) {
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      showToast(status === '提出済み' ? '提出しました' : '下書きを保存しました');
+      closeReportModal();
+      loadMonthData();
+    }).catch(function () { showToast('保存に失敗しました'); });
+  }
+
+  /* ---------- 月次PDF作成 ---------- */
+  function compileMonthlyPdf() {
+    callApi('compileMonthlyReportsPdf', { month: currentMonth }).then(function (res) {
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      showToast(res.data.departmentCount + '科分のPDFを作成しました');
+      window.open(res.data.url, '_blank');
+    }).catch(function () { showToast('PDFの作成に失敗しました'); });
+  }
+
+  /* ---------- 役員会の設定 ---------- */
+  function openBoardModal() {
+    callApi('listBoardMeetings').then(function (res) {
+      boardMeetings = res.ok ? (res.data || []) : [];
+      renderBoardMeetingList();
+    }).catch(function () { boardMeetings = []; renderBoardMeetingList(); });
+    $('bm-date').value = '';
+    $('bm-note').value = '';
+    $('boardModal').classList.remove('hidden');
+  }
+  function closeBoardModal() {
+    $('boardModal').classList.add('hidden');
+  }
+  function renderBoardMeetingList() {
+    var listEl = $('boardMeetingList');
+    listEl.innerHTML = '';
+    $('boardMeetingEmpty').classList.toggle('hidden', boardMeetings.length > 0);
+    boardMeetings.forEach(function (m) {
+      var row = document.createElement('div');
+      row.className = 'board-meeting-row';
+      row.innerHTML =
+        '<span>' + escapeHtml(jpDate(m.meetingDate)) + (m.note ? '　' + escapeHtml(m.note) : '') + '</span>' +
+        '<button type="button" class="btn btn-cancel btn-small">削除</button>';
+      row.querySelector('button').addEventListener('click', function () { deleteBoardMeeting(m.id); });
+      listEl.appendChild(row);
+    });
+  }
+  function addBoardMeeting() {
+    var meetingDate = $('bm-date').value;
+    if (!meetingDate) { showToast('開催日を入力してください'); return; }
+    callApi('addBoardMeeting', { meetingDate: meetingDate, note: $('bm-note').value || '' }).then(function (res) {
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      $('bm-date').value = '';
+      $('bm-note').value = '';
+      showToast('役員会の開催日を追加しました');
+      openBoardModal();
+      loadMonthData();
+    }).catch(function () { showToast('追加に失敗しました'); });
+  }
+  function deleteBoardMeeting(id) {
+    if (!confirm('この役員会の開催日を削除しますか？')) return;
+    callApi('deleteBoardMeeting', { id: id }).then(function (res) {
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      showToast('削除しました');
+      openBoardModal();
+      loadMonthData();
+    }).catch(function () { showToast('削除に失敗しました'); });
+  }
+
+  /* ---------- 文字サイズ切り替え ---------- */
+  var FONT_SIZE_KEY = 'temaFontSizePref';
+  function applyFontSizePref(level) {
+    document.documentElement.classList.remove('fs-large', 'fs-xlarge');
+    if (level === 'large' || level === 'xlarge') document.documentElement.classList.add('fs-' + level);
+    var btns = document.querySelectorAll('.fs-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].getAttribute('data-fs') === level);
+  }
+  function initFontSizeToggle() {
+    var saved = 'normal';
+    try { saved = localStorage.getItem(FONT_SIZE_KEY) || 'normal'; } catch (e) {}
+    applyFontSizePref(saved);
+    var btns = document.querySelectorAll('.fs-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        var level = this.getAttribute('data-fs');
+        applyFontSizePref(level);
+        try { localStorage.setItem(FONT_SIZE_KEY, level); } catch (e) {}
+      });
+    }
+  }
+
+  function setupAndroidChromeLink() {
+    if (!/Android/i.test(navigator.userAgent || '')) return;
+    var target = window.location.href.replace(/^https?:\/\//, '');
+    var intentUrl = 'intent://' + target + '#Intent;scheme=https;package=com.android.chrome;end;';
+    $('androidChromeLink').href = intentUrl;
+    $('androidChromeLinkWrap').classList.remove('hidden');
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    initFontSizeToggle();
+    setupAndroidChromeLink();
+    tryAutoLogin();
+
+    window.handleCredentialResponse = handleCredentialResponse;
+
+    var initTimer = setInterval(function () {
+      if (window.google && google.accounts && google.accounts.id) {
+        clearInterval(initTimer);
+        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse, itp_support: true });
+        google.accounts.id.renderButton($('gsiButton'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja' });
+      }
+    }, 200);
+    setTimeout(function () {
+      if (!(window.google && google.accounts && google.accounts.id)) {
+        clearInterval(initTimer);
+        $('gsiLoadError').style.display = 'block';
+      }
+    }, 8000);
+    $('btnGsiReload').addEventListener('click', function () { window.location.reload(); });
+
+    $('btnLogout').addEventListener('click', logout);
+
+    $('monthSelect').addEventListener('change', function () {
+      currentMonth = $('monthSelect').value || defaultMonth();
+      loadMonthData();
+    });
+    $('btnCompilePdf').addEventListener('click', compileMonthlyPdf);
+
+    $('btnBoardSettings').addEventListener('click', openBoardModal);
+    $('btnBoardClose').addEventListener('click', closeBoardModal);
+    $('btnBoardAdd').addEventListener('click', addBoardMeeting);
+    $('boardModal').addEventListener('click', function (e) { if (e.target.id === 'boardModal') closeBoardModal(); });
+
+    $('btnReportCancel').addEventListener('click', closeReportModal);
+    $('btnReportSaveDraft').addEventListener('click', function () { saveReportWithStatus('下書き'); });
+    $('btnReportSubmit').addEventListener('click', function () { saveReportWithStatus('提出済み'); });
+    $('reportModal').addEventListener('click', function (e) { if (e.target.id === 'reportModal') closeReportModal(); });
+    $('btnFmtH3').addEventListener('click', function () { execEditorCmd('h3'); });
+    $('btnFmtBold').addEventListener('click', function () { execEditorCmd('bold'); });
+    $('btnFmtMark').addEventListener('click', function () { execEditorCmd('mark'); });
+    $('btnFmtList').addEventListener('click', function () { execEditorCmd('ul'); });
+    $('btnReportAttach').addEventListener('click', function () { $('reportFileInput').click(); });
+    $('reportFileInput').addEventListener('change', uploadSelectedAttachment);
+  });
+})();
+</script>
+</body>
+</html>

@@ -222,6 +222,15 @@
   }
   .announcement-item:hover { background: var(--gw-bg); text-decoration: underline; }
 
+  /* 報告書未提出アラート */
+  .report-alert-deadline { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-bottom: 6px; }
+  .report-alert-deadline.past-deadline { color: var(--gw-red); font-weight: 500; }
+  .report-alert-chip {
+    display: inline-block; font-size: calc(var(--fs-scale, 1) * 11.5px); font-weight: 500;
+    background: var(--gw-yellow-tint); color: var(--gw-yellow); border-radius: 999px; padding: 3px 10px; margin: 0 4px 4px 0;
+  }
+  .report-alert-chip.past-deadline { background: var(--gw-red-tint); color: var(--gw-red); }
+
   /* 講座の準備状況(6段階チェックリスト) */
   .prep-legend-top { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--gw-border); }
   .prep-legend-top b { color: var(--gw-text); }
@@ -495,6 +504,16 @@
         <div id="announcementEmpty" class="dash-empty hidden">お知らせはありません。</div>
         <div id="announcementLoading" class="dash-empty">読み込み中…</div>
       </div>
+      <div class="dash-card">
+        <div class="dash-card-title-row">
+          <div class="dash-card-title">報告書未提出</div>
+          <a class="link-small" href="reports.html">月次報告書へ</a>
+        </div>
+        <div id="reportAlertList" class="announcement-list"></div>
+        <div id="reportAlertEmpty" class="dash-empty hidden">今月度、未提出の科はありません。</div>
+        <div id="reportAlertError" class="dash-error hidden">報告書の提出状況を取得できませんでした。</div>
+        <div id="reportAlertLoading" class="dash-empty">読み込み中…</div>
+      </div>
       <div class="dash-card dash-card-wide">
         <div class="dash-card-title">進捗状況</div>
         <div class="prep-legend-top">
@@ -523,11 +542,10 @@
         <div class="menu-item-desc">各講座の準備タスクと進捗を確認します。</div>
         <span class="menu-item-tag">準備中</span>
       </div>
-      <div class="menu-item disabled">
-        <div class="menu-item-title">資料庫＆管理簿</div>
-        <div class="menu-item-desc">講座ごとの資料を保管・確認します。</div>
-        <span class="menu-item-tag">準備中</span>
-      </div>
+      <a class="menu-item" href="reports.html">
+        <div class="menu-item-title">月次報告書</div>
+        <div class="menu-item-desc">担当科ごとの月次報告書を作成・編集し、まとめてPDF化します。</div>
+      </a>
       <div class="menu-item disabled">
         <div class="menu-item-title">SNS文章作成＆履歴</div>
         <div class="menu-item-desc">SNS投稿文の作成と過去投稿の履歴を管理します。</div>
@@ -995,6 +1013,47 @@
     loadFormSignupSummaries();
     loadRecentComments();
     loadAnnouncements();
+    loadReportAlert();
+  }
+
+  /** ダッシュボードの「報告書未提出」欄を読み込む(今月度、月次報告書が未提出の担当科を表示) */
+  function loadReportAlert() {
+    var now = new Date();
+    var month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    callApi('getReportSubmissionStatus', { month: month }).then(function (res) {
+      $('reportAlertLoading').classList.add('hidden');
+      if (!res.ok) { $('reportAlertError').classList.remove('hidden'); return; }
+      renderReportAlert(res.data || {});
+    }).catch(function () {
+      $('reportAlertLoading').classList.add('hidden');
+      $('reportAlertError').classList.remove('hidden');
+    });
+  }
+
+  function renderReportAlert(data) {
+    var list = $('reportAlertList');
+    list.innerHTML = '';
+    var missing = data.missingDepartments || [];
+    if (!missing.length) {
+      $('reportAlertEmpty').classList.remove('hidden');
+      return;
+    }
+    $('reportAlertEmpty').classList.add('hidden');
+    var pastDeadline = !!data.pastDeadline;
+    if (data.deadline) {
+      var deadlineLine = document.createElement('div');
+      deadlineLine.className = 'report-alert-deadline' + (pastDeadline ? ' past-deadline' : '');
+      deadlineLine.textContent = '提出期限：' + data.deadline + (pastDeadline ? '（期限超過）' : '');
+      list.appendChild(deadlineLine);
+    }
+    var chipsWrap = document.createElement('div');
+    missing.forEach(function (dept) {
+      var chip = document.createElement('span');
+      chip.className = 'report-alert-chip' + (pastDeadline ? ' past-deadline' : '');
+      chip.textContent = dept;
+      chipsWrap.appendChild(chip);
+    });
+    list.appendChild(chipsWrap);
   }
 
   /** ダッシュボードの「お知らせ（tema.jp）」欄を読み込む */

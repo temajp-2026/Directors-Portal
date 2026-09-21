@@ -393,7 +393,7 @@
     </div>
 
     <div id="linkResult" class="link-result hidden">
-      作成しました。以下のリンクを講師の方に送付してください（Googleログインは不要です）。
+      作成しました。以下のリンクを講師の方に送付してください（Googleログインは不要です）。「コピー」を押すと、案内文とリンクをまとめてコピーできます。
       <div class="link-row">
         <input type="text" id="generatedLink" readonly>
         <button type="button" class="btn btn-outline" id="btnCopyGeneratedLink">コピー</button>
@@ -758,6 +758,12 @@
     return new URL(LECTURER_PAGE + '?id=' + encodeURIComponent(id), window.location.href).toString();
   }
 
+  /** 講師の方に送る案内文＋リンクをまとめたテキストを作る(コピー時にURLだけでなく説明文も一緒にコピーされるように) */
+  function buildLecturerShareText(topic, url) {
+    var label = topic ? '「' + topic + '」' : '';
+    return '下記のリンクより、' + label + 'の請書兼請求書をご確認のうえ、必要事項のご記入をお願いいたします（Googleアカウントへのログインは不要です）。\n' + url;
+  }
+
   function copyText(text, okMsg) {
     function done() { showToast(okMsg || 'コピーしました'); }
     function fail() { showToast('コピーできませんでした。手動でコピーしてください。'); }
@@ -963,9 +969,9 @@
     var btnCopy = document.createElement('button');
     btnCopy.type = 'button';
     btnCopy.className = 'btn btn-outline';
-    btnCopy.textContent = '講師用リンクをコピー';
+    btnCopy.textContent = '案内文とリンクをコピー';
     btnCopy.addEventListener('click', function () {
-      copyText(lecturerLinkFor(inv.id), '講師用リンクをコピーしました');
+      copyText(buildLecturerShareText(inv.topic, lecturerLinkFor(inv.id)), '案内文とリンクをコピーしました');
       closeInvoiceActionsModal();
     });
     list.appendChild(btnCopy);
@@ -1172,7 +1178,7 @@
     $('f-eventDate').addEventListener('change', applyDefaultPaymentDueDate);
     $('f-paymentDueDate').addEventListener('input', function () { paymentDueDateTouched = true; });
     $('btnCopyGeneratedLink').addEventListener('click', function () {
-      copyText($('generatedLink').value, 'リンクをコピーしました');
+      copyText(buildLecturerShareText($('f-topic').value, $('generatedLink').value), '案内文とリンクをコピーしました');
     });
     $('invoiceModal').addEventListener('click', function (e) {
       if (e.target.id === 'invoiceModal') closeModal();
