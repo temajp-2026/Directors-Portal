@@ -263,9 +263,12 @@
   /* ---------- メニュー ---------- */
   .menu-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 14px;
     margin-bottom: 32px;
+  }
+  @media (max-width: 1000px) {
+    .menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   .menu-item {
     background: var(--gw-surface);
@@ -572,6 +575,10 @@
       <a class="menu-item" href="reports.html">
         <div class="menu-item-title">月次報告書</div>
         <div class="menu-item-desc">担当科ごとの月次報告書を作成・編集し、まとめてPDF化します。</div>
+      </a>
+      <a class="menu-item" href="materials.html">
+        <div class="menu-item-title">資料庫</div>
+        <div class="menu-item-desc">講座ごとの資料をアップロード・管理します。講師用リンクから講師も資料を提出できます。</div>
       </a>
       <div class="menu-item disabled">
         <div class="menu-item-title">SNS文章作成＆履歴</div>
