@@ -818,9 +818,47 @@
 
   function safeFileName(s) { return String(s || '講座').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40); }
 
-  /** PDFの1ページを、白い正方形(1080×1080)の中央に余白付きで収めた画像(JPEG)にする */
-  function renderPageToSquare(pdf, pageNo) {
-    return pdf.getPage(pageNo).then(function (page) {
+  /**
+   * PDFを開く。文字の描き方は2通り用意する。
+   *  - paths: PDFに埋め込まれたフォントの形をpdf.js自身が図形として描く(disableFontFace)。ブラウザやOSの
+   *           フォント処理を使わないため、Illustrator等で作ったチラシでも端末によって文字が消えることがない。
+   *  - fontface: ブラウザのフォント機能を使う。PDFにフォントが埋め込まれていない場合(Wordのチラシに多い)は、
+   *           端末の日本語フォントで描く必要があるため、こちらでしか文字を描けない。
+   * 基本はpathsで描き、埋め込まれていないフォントを使っているページだけfontfaceで描く。
+   */
+  function openPdf(pdfjsLib, bytes, mode) {
+    return pdfjsLib.getDocument({
+      data: bytes.slice(),
+      cMapUrl: PDFJS_CMAP_URL,
+      cMapPacked: true,
+      standardFontDataUrl: PDFJS_STANDARD_FONT_URL,
+      disableFontFace: mode === 'paths'
+    }).promise;
+  }
+
+  /** そのページが、PDFに埋め込まれていないフォントを使っているか */
+  function pageUsesMissingFonts(page) {
+    var OPS = window.pdfjsLib.OPS;
+    return page.getOperatorList().then(function (opList) {
+      var ids = {};
+      for (var i = 0; i < opList.fnArray.length; i++) {
+        if (opList.fnArray[i] === OPS.setFont) ids[opList.argsArray[i][0]] = true;
+      }
+      return Object.keys(ids).some(function (id) {
+        try { var f = page.commonObjs.get(id); return !!(f && f.missingFile); } catch (e) { return false; }
+      });
+    });
+  }
+
+  /** PDFの1ページを、白い正方形(1080×1080)の中央に余白付きで収めた画像(JPEG)にする。
+   *  docs: { paths: pdf.jsの文書(図形で描く), openFontFace: ブラウザのフォントで描く文書を開く関数 } */
+  function renderPageToSquare(docs, pageNo) {
+    return docs.paths.getPage(pageNo).then(function (pathsPage) {
+      return pageUsesMissingFonts(pathsPage).then(function (missing) {
+        if (!missing) return pathsPage;
+        return docs.openFontFace().then(function (faceDoc) { return faceDoc.getPage(pageNo); });
+      });
+    }).then(function (page) {
       var base = page.getViewport({ scale: 1 });
       var inner = IMAGE_SIZE - IMAGE_MARGIN * 2;
       // 縮小時に文字がつぶれないよう、いったん最終サイズの2倍の解像度で描画してから縮める
@@ -866,13 +904,17 @@
     var btn = $('btnMakeImages');
     btn.disabled = true;
     clearImages('講座案内PDFを読み込んでいます…');
+    var docs = null;
     Promise.all([loadPdfJs(), getPdfBytes(courseId)]).then(function (r) {
-      return r[0].getDocument({
-        data: r[1].slice(),
-        cMapUrl: PDFJS_CMAP_URL,
-        cMapPacked: true,
-        standardFontDataUrl: PDFJS_STANDARD_FONT_URL
-      }).promise;
+      var lib = r[0], bytes = r[1];
+      var faceDocPromise = null;
+      return openPdf(lib, bytes, 'paths').then(function (pathsDoc) {
+        docs = {
+          paths: pathsDoc,
+          openFontFace: function () { return faceDocPromise || (faceDocPromise = openPdf(lib, bytes, 'fontface')); }
+        };
+        return pathsDoc;
+      });
     }).then(function (pdf) {
       var total = pdf.numPages;
       var count = Math.min(total, MAX_IMAGE_PAGES);
@@ -884,7 +926,7 @@
           chain = chain.then(function () {
             if ($('e-course').value !== courseId) return; // 途中で講座が変わった
             $('imgStatus').textContent = '画像を作っています…（' + pageNo + ' / ' + count + '）';
-            return renderPageToSquare(pdf, pageNo).then(function (dataUrl) {
+            return renderPageToSquare(docs, pageNo).then(function (dataUrl) {
               var item = document.createElement('div');
               item.className = 'img-item';
               var fileName = base + '_' + pageNo + '.jpg';
