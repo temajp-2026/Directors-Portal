@@ -359,6 +359,9 @@
         </div>
       </div>
 
+      <div id="bankMaskedNote" class="confirmed-note hidden no-print">
+        お支払いの完了から3日が過ぎたため、個人情報保護のため振込先は口座番号の下4桁のみ表示しています。
+      </div>
       <div id="confirmedNote" class="confirmed-note hidden no-print">
         この内容で確定済みです。内容を変更する場合は、担当理事までご連絡ください。<br>
         下のボタンから確定内容を印刷・PDF保存できます。
@@ -395,8 +398,14 @@
 
   // 通信の安定化：読み取り系(list〜/get〜)は一時的な通信失敗時に1回だけ自動で再試行する。
   // サーバーから想定外の応答(HTMLのエラーページ等)が返った場合もエラーとして扱う。
+  /** 同じブラウザで理事ポータルにログイン中なら、そのログイン情報(請求書アクセスのある理事は振込先を全て確認できる) */
+  function portalIdToken() {
+    try { var a = JSON.parse(sessionStorage.getItem('riji_portal_auth') || 'null'); return (a && a.idToken) || null; } catch (e) { return null; }
+  }
   function callApi(action, payload) {
-    var body = JSON.stringify({ action: action, payload: payload || {} });
+    var req = { action: action, payload: payload || {} };
+    if (action === 'getInvoicePublic') { var tk = portalIdToken(); if (tk) req.idToken = tk; }
+    var body = JSON.stringify(req);
     var canRetry = /^(list|get)/.test(action);
     function once() {
       return fetch(GAS_API_URL, {
@@ -565,6 +574,7 @@
     $('btnConfirm').classList.toggle('hidden', locked);
     $('btnPrintAfterConfirm').classList.toggle('hidden', !locked);
     $('confirmedNote').classList.toggle('hidden', !locked);
+    $('bankMaskedNote').classList.toggle('hidden', !inv.bankMasked);
   }
 
   function toggleInvoiceNumberField() {
@@ -710,7 +720,14 @@
     btn.textContent = '送信中…';
 
     callApi('submitInvoiceLecturer', payload).then(function (res) {
-      if (!res.ok) { showToast('送信に失敗しました：' + res.error); return; }
+      if (!res.ok) {
+        if (res.error === 'invoice_already_submitted') {
+          showToast('この請求書はすでに確定済みのため、変更できません。修正が必要な場合は担当理事にご連絡ください。');
+          return callApi('getInvoicePublic', { id: invoiceId }); // 最新の状態(確定済み)を表示し直す
+        }
+        showToast(res.error === 'invalid_amount' ? '交通費・宿泊費の金額をご確認ください。' : '送信に失敗しました：' + res.error);
+        return;
+      }
       showToast('確定しました。ありがとうございました。');
       // 金額表示・ロック状態に反映(源泉区分が変わった場合に備えて再計算)
       return callApi('getInvoicePublic', { id: invoiceId });

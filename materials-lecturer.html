@@ -106,8 +106,8 @@
     background: var(--gw-bg); border: 1px solid var(--gw-border); border-radius: 8px; padding: 10px 14px;
     font-size: calc(var(--fs-scale, 1) * 13px);
   }
-  .material-row a { color: var(--gw-blue); text-decoration: none; word-break: break-all; font-weight: 500; }
-  .material-row a:hover { text-decoration: underline; }
+  .material-row .material-name { color: var(--gw-text); word-break: break-all; font-weight: 500; }
+  .material-privacy-note { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin: -4px 0 10px; }
   .material-row-meta { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-top: 3px; }
   .material-empty { font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text-secondary); }
 
@@ -209,7 +209,7 @@
       <div class="field">
         <label>ファイル<span class="req">必須</span></label>
         <div class="file-picker">
-          <input type="file" id="lec-file" class="hidden">
+          <input type="file" id="lec-file" class="hidden" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.key,.pages,.numbers,.txt,.csv,.jpg,.jpeg,.png,.gif,.heic,.heif,.webp,.mp4,.mov,.m4v,.mp3,.m4a,.wav,.zip">
           <button type="button" class="btn btn-outline" id="btnPickFile">ファイルを選択</button>
           <span class="file-picker-name" id="lec-fileName">選択されていません</span>
         </div>
@@ -221,6 +221,7 @@
       <div id="doneNote" class="done-note hidden"></div>
 
       <div class="section-title">提出済みの資料</div>
+      <div class="material-privacy-note">提出いただいた資料は、当会の理事のみが閲覧できる場所に保管しています（このページからは開けません）。</div>
       <div id="materialList" class="material-list"></div>
       <div id="materialEmpty" class="material-empty hidden">まだ提出された資料はありません。</div>
 
@@ -332,7 +333,7 @@
       var row = document.createElement('div');
       row.className = 'material-row';
       row.innerHTML =
-        '<a href="' + escapeHtml(m.fileUrl) + '" target="_blank" rel="noopener">' + escapeHtml(m.fileName || '(ファイル名なし)') + '</a>' +
+        '<span class="material-name">' + escapeHtml(m.fileName || '(ファイル名なし)') + '</span>' +
         '<div class="material-row-meta">' + escapeHtml(metaParts.join('　・　')) + '</div>';
       listEl.appendChild(row);
     });
@@ -391,9 +392,11 @@
         base64Data: base64
       }).then(function (res) {
         if (!res.ok) {
-          showToast(res.error === 'course_not_found'
+          // サーバーからの日本語の案内(ファイルの種類・大きさ・件数の上限など)はそのまま表示する
+          var err = String(res.error || '');
+          showToast(err === 'course_not_found'
             ? 'このリンクの講座が見つかりませんでした。担当理事にご確認ください。'
-            : '提出に失敗しました。時間をおいて再度お試しください。');
+            : (/[ぁ-んァ-ン一-龥]/.test(err) ? err : '提出に失敗しました。時間をおいて再度お試しください。'));
           return;
         }
         renderMaterials(res.data.materials);

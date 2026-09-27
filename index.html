@@ -1036,6 +1036,12 @@
     showToast._timer = setTimeout(function () { t.classList.add('hidden'); }, 2200);
   }
 
+  /** http(s)のURLだけをリンク先に使う(「javascript:」などのリンクを押してもスクリプトが動かないようにする) */
+  function safeUrl(u) {
+    u = String(u || '').trim();
+    return /^https?:\/\//i.test(u) ? u : '#';
+  }
+
   // 通信の安定化：読み取り系(list〜/get〜)は一時的な通信失敗時に1回だけ自動で再試行する。
   // サーバーから想定外の応答(HTMLのエラーページ等)が返った場合もエラーとして扱う。
   function callApi(action, payload) {
@@ -1409,7 +1415,7 @@
     items.forEach(function (a) {
       var a2 = document.createElement('a');
       a2.className = 'announcement-item';
-      a2.href = a.url || 'https://tema.jp/new_course_list/';
+      a2.href = a.url ? safeUrl(a.url) : 'https://tema.jp/new_course_list/';
       a2.target = '_blank';
       a2.rel = 'noopener';
       a2.textContent = a.title || '';
@@ -1857,7 +1863,7 @@
       if (c.formSheetUrl) {
         var label = !f ? '…' : (f.error ? '取得できず' : (f.total + '件'));
         var title = (f && !f.error) ? ('会場' + f.venueCount + '件／ZOOM' + f.zoomCount + '件（押すと回答用スプレッドシートを開きます）') : '回答用スプレッドシートを開く';
-        formCell = '<a href="' + escapeHtmlLocal(c.formSheetUrl) + '" target="_blank" rel="noopener" title="' + escapeHtmlLocal(title) + '">' + escapeHtmlLocal(label) + '</a>';
+        formCell = '<a href="' + escapeHtmlLocal(safeUrl(c.formSheetUrl)) + '" target="_blank" rel="noopener" title="' + escapeHtmlLocal(title) + '">' + escapeHtmlLocal(label) + '</a>';
       }
       var m = (prepOverview.materialCounts || {})[c.id] || { director: 0, lecturer: 0 };
       html += '<td class="pt-num">' + formCell + '</td><td class="pt-num">' + (m.director + m.lecturer) + '件</td>';
@@ -2351,7 +2357,7 @@
   function renderFormSheetLink(url) {
     var link = $('ppFormSheetLink');
     if (url) {
-      link.href = url;
+      link.href = safeUrl(url);
       link.classList.remove('hidden');
     } else {
       link.classList.add('hidden');

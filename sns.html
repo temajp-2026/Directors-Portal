@@ -527,6 +527,12 @@
     showToast._timer = setTimeout(function () { t.classList.add('hidden'); }, 2600);
   }
 
+  /** http(s)のURLだけをリンク先に使う(「javascript:」などのリンクを押してもスクリプトが動かないようにする) */
+  function safeUrl(u) {
+    u = String(u || '').trim();
+    return /^https?:\/\//i.test(u) ? u : '#';
+  }
+
   // 通信の安定化：読み取り系(list〜/get〜)は一時的な通信失敗時に1回だけ自動で再試行する。
   // サーバーから想定外の応答(HTMLのエラーページ等)が返った場合もエラーとして扱う。
   function callApi(action, payload) {
@@ -810,6 +816,10 @@
   // PDFの描画には pdf.js(Mozilla製・無料)を使う。画面を開いたときではなく、画像を作るときにだけ読み込む。
   var PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
   var PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  // 【セキュリティ】外部(jsDelivr)から読み込むプログラムが改ざんされていないかを、あらかじめ計算した指紋(ハッシュ)で確認する。
+  // 一致しない場合は読み込まない(画像の書き出しだけが使えなくなり、他の機能には影響しない)。
+  var PDFJS_SRI = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e';
+  var PDFJS_WORKER_SHA384 = 'SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2';
   // 日本語の文字を正しく描画するための対応表(CMap)と標準フォント。これが無いと、PDFに埋め込まれていない
   // 日本語フォント(WordやPublisherで作ったチラシに多い)の文字が描画されず、写真や図形だけの画像になってしまう。
   var PDFJS_CMAP_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/';
@@ -826,15 +836,36 @@
     pdfJsPromise = new Promise(function (resolve, reject) {
       var sc = document.createElement('script');
       sc.src = PDFJS_URL;
+      sc.integrity = PDFJS_SRI;
+      sc.crossOrigin = 'anonymous';
       sc.onload = function () {
         if (!window.pdfjsLib) { reject(new Error('pdfjs_not_loaded')); return; }
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-        resolve(window.pdfjsLib);
+        loadVerifiedWorkerUrl().then(function (workerUrl) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+          resolve(window.pdfjsLib);
+        }).catch(function () { pdfJsPromise = null; reject(new Error('pdfjs_not_loaded')); });
       };
       sc.onerror = function () { pdfJsPromise = null; reject(new Error('pdfjs_not_loaded')); };
       document.head.appendChild(sc);
     });
     return pdfJsPromise;
+  }
+
+  /** PDF読み取り用の補助プログラム(worker)を取得し、指紋が一致した場合だけ使う(一致しなければエラー) */
+  function loadVerifiedWorkerUrl() {
+    if (!(window.crypto && crypto.subtle)) return Promise.reject(new Error('no_crypto'));
+    return fetch(PDFJS_WORKER_URL).then(function (r) {
+      if (!r.ok) throw new Error('worker_fetch_failed');
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      return crypto.subtle.digest('SHA-384', buf).then(function (hash) {
+        var bin = '';
+        var bytes = new Uint8Array(hash);
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        if (btoa(bin) !== PDFJS_WORKER_SHA384) throw new Error('worker_integrity_mismatch');
+        return URL.createObjectURL(new Blob([buf], { type: 'text/javascript' }));
+      });
+    });
   }
 
   function getPdfBytes(courseId) {
@@ -1111,7 +1142,7 @@
     card.className = 'post-card' + (isOverdue(p) ? ' overdue' : '');
     var dates = [];
     if (p.status === '投稿予定') dates.push('投稿予定日：' + escapeHtml(jpDate(p.scheduledDate, true)));
-    if (p.status === '投稿済み') dates.push('投稿日：' + escapeHtml(jpDate(p.postedDate, true)) + (p.postUrl ? '　<a href="' + escapeHtml(p.postUrl) + '" target="_blank" rel="noopener">投稿を開く</a>' : ''));
+    if (p.status === '投稿済み') dates.push('投稿日：' + escapeHtml(jpDate(p.postedDate, true)) + (p.postUrl ? '　<a href="' + escapeHtml(safeUrl(p.postUrl)) + '" target="_blank" rel="noopener">投稿を開く</a>' : ''));
     dates.push('最終更新：' + escapeHtml(p.updatedAt || '') + (p.updatedBy ? '（' + escapeHtml(p.updatedBy) + '）' : ''));
     card.innerHTML =
       '<div class="pc-head"><span class="type-chip">' + escapeHtml(p.postType) + '</span>' + statusChipHtml(p) + '</div>' +
