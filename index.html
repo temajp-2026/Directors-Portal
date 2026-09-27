@@ -288,6 +288,16 @@
     transition: box-shadow .15s ease, border-color .15s ease;
   }
   .menu-item:hover { border-color: var(--gw-border); box-shadow: var(--gw-shadow-1); }
+  /* 機能別の色分け（薄い背景＋上部の色帯。ホバーで少し濃く） */
+  .menu-item[class*="menu-c-"] { border-top: 4px solid var(--mc-main); background: var(--mc-tint); border-color: var(--mc-border); border-top-color: var(--mc-main); transition: box-shadow .15s ease, background-color .15s ease, transform .15s ease; }
+  .menu-item[class*="menu-c-"]:hover { background: var(--mc-hover); border-color: var(--mc-border); border-top-color: var(--mc-main); box-shadow: var(--gw-shadow-1); transform: translateY(-1px); }
+  .menu-item[class*="menu-c-"] .menu-item-title { color: var(--mc-text); font-weight: 600; }
+  .menu-c-blue   { --mc-main: #1a73e8; --mc-tint: #f1f6fe; --mc-hover: #e3edfd; --mc-border: #d2e3fc; --mc-text: #174ea6; }
+  .menu-c-green  { --mc-main: #1e8e3e; --mc-tint: #f0f8f2; --mc-hover: #e1f2e6; --mc-border: #ceead6; --mc-text: #137333; }
+  .menu-c-orange { --mc-main: #e8710a; --mc-tint: #fef5ec; --mc-hover: #feead8; --mc-border: #fcd9b8; --mc-text: #b0500a; }
+  .menu-c-purple { --mc-main: #8430ce; --mc-tint: #f6f0fc; --mc-hover: #ede2f9; --mc-border: #e0cdf5; --mc-text: #681da8; }
+  .menu-c-pink   { --mc-main: #d01884; --mc-tint: #fdf0f7; --mc-hover: #fbe1ef; --mc-border: #f8cde3; --mc-text: #a3105f; }
+  .menu-heading { font-size: calc(var(--fs-scale, 1) * 16px); font-weight: 500; color: var(--gw-text); margin: 4px 0 12px; }
   .menu-item.disabled { color: #9aa0a6; cursor: default; pointer-events: none; background: var(--gw-bg); }
   .menu-item-title { font-weight: 500; font-size: calc(var(--fs-scale, 1) * 13.5px); margin-bottom: 4px; }
   .menu-item-desc { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); line-height: 1.5; }
@@ -588,25 +598,25 @@
       </div>
     </div>
 
+    <div class="menu-heading">メニュー</div>
     <div class="menu-grid">
-      <a class="menu-item" href="invoice-ledger.html">
+      <a class="menu-item menu-c-blue" href="invoice-ledger.html">
         <div class="menu-item-title">請書兼請求書発行</div>
         <div class="menu-item-desc">講師への請書兼請求書を作成し、講師用リンクを発行・管理します。</div>
-        <span class="menu-item-tag">講座連携は今後対応</span>
       </a>
-      <a class="menu-item" href="course-progress.html">
+      <a class="menu-item menu-c-green" href="course-progress.html">
         <div class="menu-item-title">講座準備進捗確認</div>
         <div class="menu-item-desc">全講座の準備状況を8段階で確認し、チェックを付けて更新します。</div>
       </a>
-      <a class="menu-item" href="reports.html">
+      <a class="menu-item menu-c-orange" href="reports.html">
         <div class="menu-item-title">月次報告書</div>
         <div class="menu-item-desc">担当科ごとの月次報告書を作成・編集し、まとめてPDF化します。</div>
       </a>
-      <a class="menu-item" href="materials.html">
+      <a class="menu-item menu-c-purple" href="materials.html">
         <div class="menu-item-title">資料庫</div>
         <div class="menu-item-desc">講座ごとの資料をアップロード・管理します。講師用リンクから講師も資料を提出できます。</div>
       </a>
-      <a class="menu-item" href="sns.html">
+      <a class="menu-item menu-c-pink" href="sns.html">
         <div class="menu-item-title">SNS文章作成＆履歴</div>
         <div class="menu-item-desc">講座のInstagram投稿文を雛形から作成し、投稿予定と投稿済みの履歴を管理します。</div>
       </a>
