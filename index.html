@@ -542,7 +542,10 @@
         <div id="reportAlertLoading" class="dash-empty">読み込み中…</div>
       </div>
       <div class="dash-card dash-card-wide">
-        <div class="dash-card-title">進捗状況</div>
+        <div class="dash-card-title-row">
+          <div class="dash-card-title">進捗状況</div>
+          <a class="link-small" href="course-progress.html">講座準備進捗確認へ</a>
+        </div>
         <div class="prep-legend-top">
           <span><b>①</b> 講師打ち合わせ済み</span>
           <span><b>②</b> 請書兼請求書送付済み</span>
@@ -553,7 +556,7 @@
         </div>
         <div id="prepChecklist" class="prep-checklist"></div>
         <div id="prepChecklistMore" class="prep-checklist-more hidden">
-          <a href="#courseListSection" id="prepChecklistMoreLink" class="link-small">他○件を講座一覧で見る →</a>
+          <a href="course-progress.html" id="prepChecklistMoreLink" class="link-small">他○件を講座準備進捗確認で見る →</a>
         </div>
         <div id="prepChartEmpty" class="dash-empty hidden">対象の講座がありません。</div>
         <div id="prepChartError" class="dash-error hidden">請求書機能の権限がないため表示できません。</div>
@@ -567,11 +570,10 @@
         <div class="menu-item-desc">講師への請書兼請求書を作成し、講師用リンクを発行・管理します。</div>
         <span class="menu-item-tag">講座連携は今後対応</span>
       </a>
-      <div class="menu-item disabled">
+      <a class="menu-item" href="course-progress.html">
         <div class="menu-item-title">講座準備進捗確認</div>
-        <div class="menu-item-desc">各講座の準備タスクと進捗を確認します。</div>
-        <span class="menu-item-tag">準備中</span>
-      </div>
+        <div class="menu-item-desc">全講座の準備状況を8段階で確認し、チェックを付けて更新します。</div>
+      </a>
       <a class="menu-item" href="reports.html">
         <div class="menu-item-title">月次報告書</div>
         <div class="menu-item-desc">担当科ごとの月次報告書を作成・編集し、まとめてPDF化します。</div>
@@ -902,6 +904,22 @@
   var editingCoursePdf = null; // { pdfFileId, pdfFileName, pdfUrl, pdfThumbnailUrl } | null
   var activeCourse = null; // 講座進捗/PDF機能/プロンプト書き出しで対象としている講座
   var invoicesCache = [];
+
+  // 講座準備進捗確認などから index.html?openCourse=<講座ID> で開かれた場合、その講座の「講座進捗」ページを自動で開く。
+  // チェック項目(プルダウン選択肢)と請求書の読み込みが両方終わってから開く(先に開くと表示が欠けるため)。
+  var openCourseQuery = { masterReady: false, invoiceSettled: false, handled: false };
+  function tryOpenCourseFromQuery() {
+    if (openCourseQuery.handled || !openCourseQuery.masterReady || !openCourseQuery.invoiceSettled) return;
+    openCourseQuery.handled = true;
+    var id = null;
+    try { id = new URLSearchParams(window.location.search).get('openCourse'); } catch (e) {}
+    if (!id) return;
+    id = id.trim();
+    var course = courses.filter(function (c) { return c.id === id; })[0];
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (e2) {}
+    if (course) openCourseProgress(course);
+    else showToast('指定された講座が見つかりませんでした');
+  }
   var appSettings = { createAlertDays: 40, unrespondedAlertDays: 14, paymentWarningDays: 2 };
   var formSummaryCache = {}; // courseId -> { total, venueCount, zoomCount, error } (参加者募集フォームの集計結果)
   var VENUE_HALL_2F = '白王ビル２Fホール';
@@ -1121,6 +1139,8 @@
       fillSelect($('c-format'), pulldownOptions['研修形式'] || ['座学'], null);
       fillSelect($('c-status'), pulldownOptions['講座ステータス'] || ['準備中'], null);
       fillSelect($('c-venue'), venueOptions(), '－ 選択してください －');
+      openCourseQuery.masterReady = true;
+      tryOpenCourseFromQuery();
     }).catch(function () {});
   }
 
@@ -1377,6 +1397,10 @@
       $('prepChartLoading').classList.add('hidden');
       $('paymentTaskError').classList.remove('hidden');
       $('prepChartError').classList.remove('hidden');
+    }).then(function () {
+      // 成功・失敗(請求書の権限なしを含む)のどちらでも、講座進捗ページの自動表示を進める
+      openCourseQuery.invoiceSettled = true;
+      tryOpenCourseFromQuery();
     });
   }
 
@@ -1578,7 +1602,7 @@
 
     var PREP_CHECKLIST_LIMIT = 5;
     if (target.length > PREP_CHECKLIST_LIMIT) {
-      $('prepChecklistMoreLink').textContent = '他' + (target.length - PREP_CHECKLIST_LIMIT) + '件を講座一覧で見る →';
+      $('prepChecklistMoreLink').textContent = '他' + (target.length - PREP_CHECKLIST_LIMIT) + '件を講座準備進捗確認で見る →';
       $('prepChecklistMore').classList.remove('hidden');
     } else {
       $('prepChecklistMore').classList.add('hidden');
