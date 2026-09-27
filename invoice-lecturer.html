@@ -222,7 +222,8 @@
       <div class="section-title">1. 研修・講演概要</div>
       <table class="doc-table">
         <tbody>
-          <tr><th>開催日時</th><td><span id="doc-eventDate">未定</span>　<span id="doc-time">未定</span></td></tr>
+          <tr><th>開催日時</th><td><span id="doc-eventDate">未定</span>　<span id="doc-courseTime"></span></td></tr>
+          <tr><th>講師依頼時間</th><td id="doc-time">未定</td></tr>
           <tr><th>開催場所</th><td id="doc-venue">未定</td></tr>
           <tr><th>講演テーマ</th><td id="doc-topic">未定</td></tr>
           <tr><th>研修形式</th><td id="doc-format">未定</td></tr>
@@ -471,6 +472,9 @@
   function renderInvoice(inv) {
     $('doc-createdDate').textContent = jpDate(inv.createdAt ? String(inv.createdAt).slice(0, 10) : '');
     $('doc-eventDate').textContent = jpDate(inv.eventDate, true);
+    // 開催日時の欄には講座の時間を、講師依頼時間の欄には講師の方にお願いする時間を表示する。
+    // 講座の時間が記録されていない古い請求書では、開催日時の欄は日付のみとする。
+    $('doc-courseTime').textContent = (inv.courseStartTime || inv.courseEndTime) ? jpTimeRange(inv.courseStartTime, inv.courseEndTime) : '';
     $('doc-time').textContent = jpTimeRange(inv.startTime, inv.endTime);
     $('doc-venue').textContent = (inv.venue || '未定') + (inv.venue === VENUE_HALL_2F ? '　（' + VENUE_HALL_2F_ADDRESS + '）' : '');
     $('doc-topic').textContent = inv.topic || '未定';

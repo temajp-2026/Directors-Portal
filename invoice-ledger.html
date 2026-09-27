@@ -350,8 +350,11 @@
     <div class="field-grid">
       <div class="field"><label for="f-eventDate">開催日</label><input type="date" id="f-eventDate"></div>
       <div class="field"><label for="f-directorName">担当理事名</label><input type="text" id="f-directorName" placeholder="例）山田太郎"></div>
-      <div class="field"><label for="f-startTime">開始時刻</label><input type="time" id="f-startTime"></div>
-      <div class="field"><label for="f-endTime">終了時刻</label><input type="time" id="f-endTime"></div>
+      <div class="field"><label for="f-courseStartTime">講座の開始時刻</label><input type="time" id="f-courseStartTime"></div>
+      <div class="field"><label for="f-courseEndTime">講座の終了時刻</label><input type="time" id="f-courseEndTime"></div>
+      <div class="field"><label for="f-startTime">講師依頼時間（開始）</label><input type="time" id="f-startTime"></div>
+      <div class="field"><label for="f-endTime">講師依頼時間（終了）</label><input type="time" id="f-endTime"></div>
+      <div class="field full-span" style="margin-top:-6px; font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary);">講師依頼時間は、講師の方にお願いする時間（集合・打ち合わせ等を含む）です。講師の方の画面には「講座の時間」と「講師依頼時間」の両方が表示されます。</div>
       <div class="field"><label for="f-venue">開催場所</label><select id="f-venue"></select></div>
       <div class="field hidden" id="f-venueOtherWrap"><label for="f-venueOther">開催場所（自由記入）</label><input type="text" id="f-venueOther" placeholder="例）〇〇市民センター 会議室A"></div>
       <div class="field full-span"><label for="f-topic">講演テーマ</label><input type="text" id="f-topic" placeholder="例）繊維製品の適切な取り扱いについて"></div>
@@ -643,8 +646,11 @@
     var c = courses.filter(function (x) { return x.id === courseId; })[0];
     if (!c) return;
     $('f-eventDate').value = c.eventDate || '';
-    $('f-startTime').value = c.startTime || '';
-    $('f-endTime').value = c.endTime || '';
+    // 講座の時間はそのまま、講師依頼時間は講座側で登録されていればそれを、なければ講座の時間を入れる
+    $('f-courseStartTime').value = c.startTime || '';
+    $('f-courseEndTime').value = c.endTime || '';
+    $('f-startTime').value = c.lecturerStartTime || c.startTime || '';
+    $('f-endTime').value = c.lecturerEndTime || c.endTime || '';
     applyVenueToForm(c.venue || '');
     $('f-topic').value = c.name || '';
     if (c.format) $('f-format').value = c.format;
@@ -992,8 +998,19 @@
       var tdDate = document.createElement('td');
       tdDate.setAttribute('data-label', '開催日時');
       var invDateLabel = inv.eventDate ? jpDate(inv.eventDate, true) : '未定';
-      var invTimeLabel = (inv.startTime || inv.endTime) ? '　' + jpTimeRange(inv.startTime, inv.endTime) : '';
+      // 開催日時は講座の時間で表示し、講師依頼時間が講座の時間と違う場合は併記する
+      // (講座の時間が未記録の古い請求書は、これまで通り請求書の時刻を表示する)
+      var hasCourseTime = !!(inv.courseStartTime || inv.courseEndTime);
+      var mainStart = hasCourseTime ? inv.courseStartTime : inv.startTime;
+      var mainEnd = hasCourseTime ? inv.courseEndTime : inv.endTime;
+      var invTimeLabel = (mainStart || mainEnd) ? '　' + jpTimeRange(mainStart, mainEnd) : '';
       tdDate.textContent = invDateLabel + invTimeLabel;
+      if (hasCourseTime && (inv.startTime || inv.endTime) && (inv.startTime !== inv.courseStartTime || inv.endTime !== inv.courseEndTime)) {
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-top: 2px;';
+        sub.textContent = '講師依頼時間：' + jpTimeRange(inv.startTime, inv.endTime);
+        tdDate.appendChild(sub);
+      }
       tr.appendChild(tdDate);
 
       var tdFee = document.createElement('td');
@@ -1128,6 +1145,8 @@
     $('f-eventDate').value = inv ? (inv.eventDate || '') : '';
     $('f-startTime').value = inv ? (inv.startTime || '') : '';
     $('f-endTime').value = inv ? (inv.endTime || '') : '';
+    $('f-courseStartTime').value = inv ? (inv.courseStartTime || '') : '';
+    $('f-courseEndTime').value = inv ? (inv.courseEndTime || '') : '';
     applyVenueToForm(inv ? (inv.venue || '') : '');
     $('f-topic').value = inv ? (inv.topic || '') : '';
     $('f-format').value = inv ? (inv.format || '座学') : '座学';
@@ -1164,6 +1183,8 @@
       eventDate: $('f-eventDate').value,
       startTime: $('f-startTime').value,
       endTime: $('f-endTime').value,
+      courseStartTime: $('f-courseStartTime').value,
+      courseEndTime: $('f-courseEndTime').value,
       venue: resolveVenueFromForm(),
       topic: $('f-topic').value,
       format: $('f-format').value,

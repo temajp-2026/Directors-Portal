@@ -193,6 +193,7 @@
       <div class="course-info">
         <div class="course-info-row"><div class="course-info-label">講座名</div><div class="course-info-value" id="ci-name"></div></div>
         <div class="course-info-row"><div class="course-info-label">開催日時</div><div class="course-info-value" id="ci-date"></div></div>
+        <div class="course-info-row" id="ci-lecturer-row"><div class="course-info-label">講師依頼時間</div><div class="course-info-value" id="ci-lecturerTime"></div></div>
         <div class="course-info-row" id="ci-venue-row"><div class="course-info-label">会場</div><div class="course-info-value" id="ci-venue"></div></div>
       </div>
 
@@ -297,6 +298,9 @@
     $('ci-name').textContent = course.name || '';
     var timeLabel = jpTimeRange(course.startTime, course.endTime);
     $('ci-date').textContent = jpDate(course.eventDate, true) + (timeLabel ? '　' + timeLabel : '');
+    var lecturerLabel = jpTimeRange(course.lecturerStartTime, course.lecturerEndTime);
+    $('ci-lecturerTime').textContent = lecturerLabel || timeLabel; // 未登録なら講座の時間と同じ
+    $('ci-lecturer-row').classList.toggle('hidden', !(lecturerLabel || timeLabel));
     $('ci-venue').textContent = course.venue || '';
     $('ci-venue-row').classList.toggle('hidden', !course.venue);
   }

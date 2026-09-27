@@ -253,6 +253,20 @@
   .caption-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
   .counter { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); }
   .counter .over { color: var(--gw-red); font-weight: 500; }
+  .pdf-note { background: var(--gw-blue-tint); border: 1px solid #c6dafc; color: var(--gw-blue-dark); border-radius: 8px; padding: 8px 12px; font-size: calc(var(--fs-scale, 1) * 12px); margin-top: 8px; line-height: 1.6; }
+  .pdf-note-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .pdf-note-head .btn { flex-shrink: 0; }
+  .pdf-note details { margin-top: 6px; }
+  .pdf-note summary { cursor: pointer; }
+  .pdf-note textarea { width: 100%; margin-top: 6px; font-family: inherit; font-size: calc(var(--fs-scale, 1) * 12px); line-height: 1.6; padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 6px; background: var(--gw-surface); color: var(--gw-text); resize: vertical; }
+  @media (max-width: 560px) { .pdf-note-head { flex-direction: column; } }
+  .img-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+  .img-grid:empty { display: none; }
+  .img-item { border: 1px solid var(--gw-border); border-radius: 8px; padding: 6px; background: var(--gw-bg); text-align: center; }
+  .img-item img { width: 100%; aspect-ratio: 1 / 1; display: block; border-radius: 4px; background: #fff; border: 1px solid var(--gw-border); }
+  .img-item a { display: inline-block; margin-top: 5px; font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-blue); text-decoration: none; }
+  .img-item a:hover { text-decoration: underline; }
   .warn-note { background: var(--gw-yellow-tint); border: 1px solid #f4d78a; color: var(--gw-yellow); border-radius: 8px; padding: 8px 12px; font-size: calc(var(--fs-scale, 1) * 12px); margin-top: 8px; line-height: 1.6; }
   input[type="date"], input[type="url"] {
     font-family: 'Roboto', 'Noto Sans JP', system-ui, sans-serif; font-size: calc(var(--fs-scale, 1) * 13px);
@@ -408,6 +422,24 @@
     </div>
     <textarea id="e-caption" spellcheck="false"></textarea>
     <div id="e-warn" class="warn-note hidden"></div>
+    <div id="e-pdf" class="pdf-note hidden">
+      <div class="pdf-note-head">
+        <span id="e-pdfSummary"></span>
+        <button type="button" class="btn btn-outline btn-small" id="btnPdfReload">PDFを読み直す</button>
+      </div>
+      <details id="e-pdfRawWrap" class="hidden">
+        <summary>講座案内PDFから読み取った全文を見る（必要な部分を手でコピーできます）</summary>
+        <textarea id="e-pdfRaw" readonly rows="8"></textarea>
+      </details>
+    </div>
+
+    <div class="modal-section-title">投稿用の画像（正方形 1080×1080）</div>
+    <div class="img-tools">
+      <button type="button" class="btn btn-outline btn-small" id="btnMakeImages">講座案内PDFから画像を作る</button>
+      <button type="button" class="btn btn-outline btn-small hidden" id="btnSaveAllImages">すべて保存</button>
+    </div>
+    <div id="imgStatus" class="rc-hint" style="margin-top:6px;">講座案内PDFの各ページを、Instagram用の正方形の画像（余白は白）にします。</div>
+    <div id="imgGrid" class="img-grid"></div>
 
     <div class="modal-section-title">投稿の記録</div>
     <div class="field-grid two">
@@ -464,6 +496,7 @@
   var templates = {};
   var attendance = {};
   var formSummaries = {};     // courseId → { total } / { error:true }
+  var pdfTexts = {};          // courseId → { text } / { noPdf:true } / { error:'...' }（講座案内PDFの読み取り結果）
   var currentView = 'course';
 
   // 編集中の状態
@@ -582,8 +615,75 @@
     if (a.venue && a.zoom) return '会場' + a.venue + '名・ZOOM' + a.zoom + '名の計' + (a.venue + a.zoom) + '名';
     return (a.venue + a.zoom) + '名';
   }
-  /** 雛形の{差し込み項目}を講座の情報に置き換える。分からない項目は「◯」にして、missingに名前を記録する */
-  function fillTemplate(text, c, missing) {
+  /* ---------- 講座案内PDF(OCR)からの読み取り ---------- */
+  // PDFから拾う差し込み項目。読み取れなかった場合は「◯」にせず、その項目を含む行ごと省く。
+  var PDF_KEYS = ['講座内容', '講師', '対象', '定員', '参加費', '申込締切', '案内PDFの内容'];
+
+  function cleanLine(l) { return String(l || '').replace(/　/g, ' ').replace(/[ \t]+/g, ' ').trim(); }
+  function clip(str, n) { str = cleanLine(str); return str.length > n ? str.slice(0, n) + '…' : str; }
+  var LABEL_LINE = /^(講\s*師|講師名|講演者|登壇者|対\s*象|定\s*員|参加費|受講料|受講費|会\s*費|費\s*用|日\s*時|会\s*場|場\s*所|申込|申し込み|お申込|主\s*催|問合せ|問い合わせ|お問い合わせ|内\s*容|講座内容|研修内容|プログラム|カリキュラム)/;
+
+  /** 「見出し：値」形式の行、または見出しだけの行＋次の行から値を取り出す */
+  function findLabeled(lines, re) {
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(re);
+      if (!m) continue;
+      var rest = cleanLine(lines[i].slice(m[0].length).replace(/^[\s:：]+/, ''));
+      if (rest) return rest;
+      if (lines[i + 1] && !LABEL_LINE.test(lines[i + 1])) return cleanLine(lines[i + 1]);
+    }
+    return '';
+  }
+
+  /**
+   * OCRの全文から、SNS投稿文に使えそうな項目を正規表現で拾い出す(チラシの書き方によっては拾えないため、確認前提の下書き)。
+   * 戻り値: { 講座内容, 講師, 対象, 定員, 参加費, 申込締切, 案内PDFの内容 } (拾えなかった項目は空文字)
+   */
+  function parsePdfInfo(text) {
+    var norm = String(text || '').replace(/\r/g, '').replace(/：/g, ':');
+    var lines = norm.split('\n').map(cleanLine).filter(Boolean);
+    var info = {};
+    var lecturer = findLabeled(lines, /^(講\s*師(?!依頼)|講師名|講演者|登壇者)/);
+    info['講師'] = lecturer ? clip(lecturer, 60) : '';
+    var target = findLabeled(lines, /^(対\s*象\s*者?)/);
+    info['対象'] = target ? clip(target, 60) : '';
+    var cap = norm.match(/定\s*員\s*:?\s*([0-9０-９]+\s*名[^\n]{0,20})/);
+    info['定員'] = cap ? clip(cap[1], 40) : '';
+    var fee = findLabeled(lines, /^(参加費|受講料|受講費|会\s*費|費\s*用)/);
+    if (!fee) {
+      var priceLines = lines.filter(function (l) { return /(\d[\d,]*\s*円|無料)/.test(l) && l.length <= 40; });
+      fee = priceLines.slice(0, 3).join(' ／ ');
+    }
+    info['参加費'] = fee ? clip(fee, 80) : '';
+    var deadline = norm.match(/(?:お?申込み?|申し込み)\s*(?:締切|締め切り|期限)\s*:?\s*([^\n]+)/);
+    info['申込締切'] = deadline ? clip(deadline[1], 40) : '';
+
+    // 講座内容：箇条書きの行(・●○■◆◇▶ など)を最大8行。無ければ「内容」等の見出しの後の数行
+    var bullets = lines.filter(function (l) { return /^[・●○■◆◇□▶►✓✔\-‐]/.test(l); })
+      .map(function (l) { return clip(l.replace(/^[・●○■◆◇□▶►✓✔\-‐]\s*/, ''), 60); })
+      .filter(function (l) { return l && !/^(日\s*時|会\s*場|場\s*所|定\s*員|参加費|受講料|講\s*師|対\s*象)/.test(l); });
+    var contentLines = bullets.slice(0, 8);
+    if (!contentLines.length) {
+      for (var k = 0; k < lines.length; k++) {
+        var hm = lines[k].match(/^(講座内容|研修内容|内\s*容|プログラム|カリキュラム)\s*:?\s*(.*)$/);
+        if (!hm) continue;
+        if (hm[2]) contentLines.push(clip(hm[2], 60));
+        for (var n = k + 1; n < lines.length && contentLines.length < 5; n++) {
+          if (LABEL_LINE.test(lines[n])) break;
+          contentLines.push(clip(lines[n], 60));
+        }
+        break;
+      }
+    }
+    info['講座内容'] = contentLines.length ? ('▼ 講座内容\n' + contentLines.map(function (l) { return '・' + l; }).join('\n')) : '';
+    info['案内PDFの内容'] = lines.length ? clip(lines.join(' '), 400) : '';
+    return info;
+  }
+
+  /** 雛形の{差し込み項目}を講座の情報に置き換える。分からない項目は「◯」にして、missingに名前を記録する。
+   *  講座案内PDFから拾う項目は、拾えなかった場合にその行ごと省く(pdfMissingに記録)。 */
+  function fillTemplate(text, c, missing, pdfMissing) {
+    var pdf = pdfTexts[c.id] && pdfTexts[c.id].text ? parsePdfInfo(pdfTexts[c.id].text) : {};
     var values = {
       '講座名': c.name || '',
       '開催日': c.eventDate ? jpDate(c.eventDate, true) : '',
@@ -596,21 +696,38 @@
       '申込数': (function () { var f = formSummaries[c.id]; return f && !f.error ? (f.total + '名') : ''; })(),
       '参加人数': attendanceText(c.id) || ''
     };
-    return String(text || '').replace(/\{([^{}]+)\}/g, function (all, key) {
+    PDF_KEYS.forEach(function (k) { values[k] = pdf[k] || ''; });
+    var kept = String(text || '').split('\n').filter(function (line) {
+      var drop = false;
+      line.replace(/\{([^{}]+)\}/g, function (all, key) {
+        if (PDF_KEYS.indexOf(key) !== -1 && !values[key]) {
+          drop = true;
+          if (pdfMissing.indexOf(key) === -1) pdfMissing.push(key);
+        }
+        return all;
+      });
+      return !drop;
+    }).join('\n');
+    var filled = kept.replace(/\{([^{}]+)\}/g, function (all, key) {
       if (!(key in values)) return all; // 知らない項目はそのまま残す
       if (values[key]) return values[key];
       if (missing.indexOf(key) === -1) missing.push(key);
       return key === '参加人数' || key === '申込数' ? '◯名' : '◯';
     });
+    return filled.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
   }
   function buildCaption(courseId, postType) {
     var c = findCourse(courseId);
     var tpl = templates[postType];
-    var missing = [];
-    if (!c || !tpl) return { caption: '', missing: missing };
-    var body = fillTemplate(tpl.body, c, missing);
+    var missing = [], pdfMissing = [];
+    if (!c || !tpl) return { caption: '', missing: missing, pdfMissing: pdfMissing };
+    var body = fillTemplate(tpl.body, c, missing, pdfMissing);
     var tags = String(tpl.hashtags || '').trim();
-    return { caption: body + (tags ? '\n\n' + tags : ''), missing: missing };
+    return { caption: body + (tags ? '\n\n' + tags : ''), missing: missing, pdfMissing: pdfMissing };
+  }
+  function templateUsesPdf(postType) {
+    var body = (templates[postType] || {}).body || '';
+    return PDF_KEYS.some(function (k) { return body.indexOf('{' + k + '}') !== -1; });
   }
   var MISSING_HINTS = {
     '開催日': '講座の開催日が未登録です',
@@ -626,6 +743,169 @@
     el.innerHTML = '差し込めなかった項目があり、「◯」にしています。投稿前に書き換えてください。<br>' +
       missing.map(function (k) { return '・{' + escapeHtml(k) + '}' + (MISSING_HINTS[k] ? '：' + escapeHtml(MISSING_HINTS[k]) : ''); }).join('<br>');
     el.classList.remove('hidden');
+  }
+
+  /** 講座案内PDFの読み取り状況と、読み取った全文(確認・手動コピー用)を表示する */
+  function showPdfStatus(courseId, postType, pdfMissing) {
+    var box = $('e-pdf');
+    var c = findCourse(courseId);
+    if (!c || !templateUsesPdf(postType)) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    var st = pdfTexts[courseId];
+    var summary = $('e-pdfSummary');
+    var raw = $('e-pdfRaw');
+    $('btnPdfReload').classList.toggle('hidden', !c.pdfFileId);
+    if (!c.pdfFileId || (st && st.noPdf)) {
+      summary.textContent = '講座案内PDFが登録されていないため、PDFの内容（講座内容・講師・定員など）は入っていません。講座進捗ページの「PDF機能」から登録できます。';
+      $('e-pdfRawWrap').classList.add('hidden');
+      return;
+    }
+    if (!st) { summary.textContent = '講座案内PDFはまだ読み取っていません。'; $('e-pdfRawWrap').classList.add('hidden'); return; }
+    if (st.error) {
+      summary.textContent = '講座案内PDFを読み取れませんでした（' + st.error + '）。Apps Scriptで「Drive API」が有効になっているかご確認ください。';
+      $('e-pdfRawWrap').classList.add('hidden');
+      return;
+    }
+    summary.textContent = pdfMissing && pdfMissing.length
+      ? '講座案内PDFの内容を差し込みました。読み取れなかった項目（' + pdfMissing.join('・') + '）の行は省いています。PDFの書き方によっては誤って拾うことがあるので、内容を確認してください。'
+      : '講座案内PDFの内容を差し込みました。PDFの書き方によっては誤って拾うことがあるので、内容を確認してください。';
+    raw.value = st.text || '';
+    $('e-pdfRawWrap').classList.remove('hidden');
+  }
+
+  /* ---------- 講座案内PDF → Instagram用の正方形画像 ---------- */
+  // PDFの描画には pdf.js(Mozilla製・無料)を使う。画面を開いたときではなく、画像を作るときにだけ読み込む。
+  var PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+  var PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  var IMAGE_SIZE = 1080;     // Instagramの正方形投稿のサイズ
+  var IMAGE_MARGIN = 40;     // 画像のまわりの白い余白
+  var MAX_IMAGE_PAGES = 10;  // 画像にするページ数の上限
+  var pdfBytesCache = {};    // courseId → PDFのバイト列(同じ講座で作り直すときに再取得しない)
+  var pdfJsPromise = null;
+
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfJsPromise) return pdfJsPromise;
+    pdfJsPromise = new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = PDFJS_URL;
+      sc.onload = function () {
+        if (!window.pdfjsLib) { reject(new Error('pdfjs_not_loaded')); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        resolve(window.pdfjsLib);
+      };
+      sc.onerror = function () { pdfJsPromise = null; reject(new Error('pdfjs_not_loaded')); };
+      document.head.appendChild(sc);
+    });
+    return pdfJsPromise;
+  }
+
+  function getPdfBytes(courseId) {
+    if (pdfBytesCache[courseId]) return Promise.resolve(pdfBytesCache[courseId]);
+    return callApi('getCoursePdfFile', { courseId: courseId }).then(function (res) {
+      if (!res.ok) throw new Error(res.error || 'pdf_load_failed');
+      var bin = atob(res.data.base64 || '');
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      pdfBytesCache[courseId] = bytes;
+      return bytes;
+    });
+  }
+
+  function safeFileName(s) { return String(s || '講座').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40); }
+
+  /** PDFの1ページを、白い正方形(1080×1080)の中央に余白付きで収めた画像(JPEG)にする */
+  function renderPageToSquare(pdf, pageNo) {
+    return pdf.getPage(pageNo).then(function (page) {
+      var base = page.getViewport({ scale: 1 });
+      var inner = IMAGE_SIZE - IMAGE_MARGIN * 2;
+      // 縮小時に文字がつぶれないよう、いったん最終サイズの2倍の解像度で描画してから縮める
+      var scale = (inner * 2) / Math.max(base.width, base.height);
+      var vp = page.getViewport({ scale: scale });
+      var tmp = document.createElement('canvas');
+      tmp.width = Math.ceil(vp.width); tmp.height = Math.ceil(vp.height);
+      var tctx = tmp.getContext('2d');
+      tctx.fillStyle = '#ffffff';
+      tctx.fillRect(0, 0, tmp.width, tmp.height);
+      return page.render({ canvasContext: tctx, viewport: vp }).promise.then(function () {
+        var out = document.createElement('canvas');
+        out.width = IMAGE_SIZE; out.height = IMAGE_SIZE;
+        var octx = out.getContext('2d');
+        octx.fillStyle = '#ffffff';
+        octx.fillRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
+        var ratio = Math.min(inner / tmp.width, inner / tmp.height);
+        var w = Math.round(tmp.width * ratio), h = Math.round(tmp.height * ratio);
+        octx.imageSmoothingQuality = 'high';
+        octx.drawImage(tmp, Math.round((IMAGE_SIZE - w) / 2), Math.round((IMAGE_SIZE - h) / 2), w, h);
+        return out.toDataURL('image/jpeg', 0.92);
+      });
+    });
+  }
+
+  function clearImages(message) {
+    $('imgGrid').innerHTML = '';
+    $('btnSaveAllImages').classList.add('hidden');
+    $('imgStatus').textContent = message || '講座案内PDFの各ページを、Instagram用の正方形の画像（余白は白）にします。';
+  }
+
+  var IMAGE_ERRORS = {
+    pdf_not_found: '講座案内PDFが登録されていません。講座進捗ページの「PDF機能」から登録してください。',
+    pdf_too_large: '講座案内PDFが大きすぎるため、画像にできませんでした（15MBまで）。',
+    pdfjs_not_loaded: '画像を作るための部品（pdf.js）を読み込めませんでした。通信環境をご確認のうえ、もう一度お試しください。'
+  };
+
+  function makeImages() {
+    var courseId = $('e-course').value;
+    var c = findCourse(courseId);
+    if (!c) return;
+    if (!c.pdfFileId) { clearImages(IMAGE_ERRORS.pdf_not_found); return; }
+    var btn = $('btnMakeImages');
+    btn.disabled = true;
+    clearImages('講座案内PDFを読み込んでいます…');
+    Promise.all([loadPdfJs(), getPdfBytes(courseId)]).then(function (r) {
+      return r[0].getDocument({ data: r[1].slice() }).promise;
+    }).then(function (pdf) {
+      var total = pdf.numPages;
+      var count = Math.min(total, MAX_IMAGE_PAGES);
+      var grid = $('imgGrid');
+      var base = safeFileName(c.name);
+      var chain = Promise.resolve();
+      for (var i = 1; i <= count; i++) {
+        (function (pageNo) {
+          chain = chain.then(function () {
+            if ($('e-course').value !== courseId) return; // 途中で講座が変わった
+            $('imgStatus').textContent = '画像を作っています…（' + pageNo + ' / ' + count + '）';
+            return renderPageToSquare(pdf, pageNo).then(function (dataUrl) {
+              var item = document.createElement('div');
+              item.className = 'img-item';
+              var fileName = base + '_' + pageNo + '.jpg';
+              item.innerHTML = '<img alt="' + escapeHtml(pageNo + 'ページ目') + '"><a>' + pageNo + 'ページ目を保存</a>';
+              item.querySelector('img').src = dataUrl;
+              var a = item.querySelector('a');
+              a.href = dataUrl;
+              a.download = fileName;
+              grid.appendChild(item);
+            });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        if ($('e-course').value !== courseId) return;
+        var msg = count + '枚の画像を作りました。';
+        if (total > count) msg += '（PDFは全' + total + 'ページのため、最初の' + count + 'ページを画像にしました）';
+        msg += '　スマホでは、画像を長押しして「写真に保存」でも保存できます。';
+        $('imgStatus').textContent = msg;
+        $('btnSaveAllImages').classList.toggle('hidden', count < 2);
+      });
+    }).catch(function (err) {
+      var key = String(err && err.message ? err.message : err).split(':')[0];
+      clearImages(IMAGE_ERRORS[key] || ('画像を作れませんでした（' + key + '）'));
+    }).then(function () { btn.disabled = false; });
+  }
+
+  function saveAllImages() {
+    var links = Array.prototype.slice.call($('imgGrid').querySelectorAll('a[download]'));
+    links.forEach(function (a, i) { setTimeout(function () { a.click(); }, i * 400); });
   }
 
   /* ---------- 描画 ---------- */
@@ -846,27 +1126,49 @@
   }
 
   /** 雛形から投稿文を作る。リマインドで申込数を使う雛形なら、先に参加者募集フォームの集計を取りに行く */
-  function generateCaption() {
+  function generateCaption(forcePdf) {
     var courseId = $('e-course').value;
     var type = selectedType();
     if (!courseId || !type) return;
     var c = findCourse(courseId);
     var needsForm = /\{申込数\}/.test((templates[type] || {}).body || '') && c && c.formSheetUrl && !formSummaries[courseId];
+    var needsPdf = templateUsesPdf(type) && c && c.pdfFileId && (forcePdf || !pdfTexts[courseId]);
     var apply = function () {
+      if ($('e-course').value !== courseId || selectedType() !== type) return; // 待っている間に選択が変わった
       var r = buildCaption(courseId, type);
       $('e-caption').value = r.caption;
+      $('e-caption').disabled = false;
       captionTouched = false;
       showMissing(r.missing);
+      showPdfStatus(courseId, type, r.pdfMissing);
       updateCounter();
     };
-    if (!needsForm) { apply(); return; }
-    $('e-caption').value = '申込数を取得しています…';
-    callApi('getFormSignupSummary', { sheetUrl: c.formSheetUrl, columnOverride: c.formVenueColumnOverride || '' }).then(function (res) {
-      formSummaries[courseId] = (res && res.ok && res.data) ? { total: res.data.total } : { error: true };
-    }).catch(function () { formSummaries[courseId] = { error: true }; }).then(apply);
+    var steps = [];
+    if (needsForm) {
+      steps.push(function () {
+        return callApi('getFormSignupSummary', { sheetUrl: c.formSheetUrl, columnOverride: c.formVenueColumnOverride || '' }).then(function (res) {
+          formSummaries[courseId] = (res && res.ok && res.data) ? { total: res.data.total } : { error: true };
+        }).catch(function () { formSummaries[courseId] = { error: true }; });
+      });
+    }
+    if (needsPdf) {
+      steps.push(function () {
+        return callApi('getCoursePdfText', { courseId: courseId, force: !!forcePdf }).then(function (res) {
+          if (res && res.ok) pdfTexts[courseId] = res.data.noPdf ? { noPdf: true } : { text: res.data.text || '' };
+          else pdfTexts[courseId] = { error: (res && res.error) ? String(res.error).split(':')[0] : '通信エラー' };
+        }).catch(function () { pdfTexts[courseId] = { error: '通信エラー' }; });
+      });
+    }
+    if (!steps.length) { apply(); return; }
+    $('e-caption').value = needsPdf
+      ? '講座案内PDFを読み取っています…（初回は10〜20秒ほどかかります）'
+      : '申込数を取得しています…';
+    $('e-caption').disabled = true;
+    steps.reduce(function (p, step) { return p.then(step); }, Promise.resolve()).then(apply);
   }
 
   function onSourceChanged() {
+    clearImages();
     // 講座や種類を変えたとき：手直しをしていなければ作り直す。手直し済みなら確認する
     if (captionTouched && $('e-caption').value.trim() && !confirm('講座または種類が変わりました。雛形から投稿文を作り直しますか？\n（手直しした内容は消えます。「キャンセル」で今の文章のまま残します）')) return;
     generateCaption();
@@ -888,6 +1190,8 @@
     $('e-postedDate').value = p ? (p.postedDate || '') : '';
     $('e-postUrl').value = p ? (p.postUrl || '') : '';
     $('e-warn').classList.add('hidden');
+    $('e-pdf').classList.add('hidden');
+    clearImages();
     if (p) {
       $('e-caption').value = p.caption || '';
       captionTouched = true; // 保存済みの文章は「手直し済み」とみなし、勝手に作り直さない
@@ -1118,6 +1422,12 @@
       generateCaption();
     });
     $('e-status').addEventListener('change', updateStatusFields);
+    $('btnMakeImages').addEventListener('click', makeImages);
+    $('btnSaveAllImages').addEventListener('click', saveAllImages);
+    $('btnPdfReload').addEventListener('click', function () {
+      if (captionTouched && $('e-caption').value.trim() && !confirm('PDFを読み直して、雛形から投稿文を作り直します。手直しした内容は消えます。よろしいですか？')) return;
+      generateCaption(true);
+    });
     $('btnCopyCaption').addEventListener('click', function () { copyText($('e-caption').value, '投稿文をコピーしました。Instagramに貼り付けてください'); });
     $('btnSave').addEventListener('click', saveEditor);
     $('btnDelete').addEventListener('click', deleteEditing);
