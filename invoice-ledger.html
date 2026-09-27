@@ -28,6 +28,16 @@
   html.fs-xlarge { --fs-scale: 1.24; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--gw-bg); }
+  /* 一覧のページ送り(10件ごと)と、完了・取消の区切り行 */
+  .pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 16px 0 8px; }
+  .pager-info { width: 100%; text-align: center; font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin-bottom: 2px; }
+  .pager button { min-width: 36px; height: 34px; padding: 0 10px; border: 1px solid var(--gw-border); border-radius: 8px; background: var(--gw-surface);
+    color: var(--gw-text); font-size: calc(var(--fs-scale, 1) * 13px); cursor: pointer; font-family: inherit; }
+  .pager button:hover:not(:disabled) { background: var(--gw-blue-tint); border-color: var(--gw-blue); }
+  .pager button.current { background: var(--gw-blue); border-color: var(--gw-blue); color: #fff; font-weight: 500; cursor: default; }
+  .pager button:disabled:not(.current) { color: #bdc1c6; cursor: default; }
+  .pager .pager-gap { color: var(--gw-text-secondary); padding: 0 2px; }
+  tr.group-divider td { background: var(--gw-bg); color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 12px); font-weight: 500; padding: 8px 12px; }
   body { font-family: 'Roboto', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif; color: var(--gw-text); }
 
   .login-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -231,6 +241,8 @@
     }
     table.list-table td.amount { text-align: left; }
     table.list-table td .row-actions { margin-top: 2px; }
+    table.list-table tr.group-divider { border: none; box-shadow: none; padding: 0; margin: 18px 0 8px; background: none; }
+    table.list-table tr.group-divider td { padding: 6px 2px; background: none; border-bottom: 1px solid var(--gw-border); }
   }
 </style>
 </head>
@@ -329,6 +341,7 @@
       </thead>
       <tbody id="invoiceTbody"></tbody>
     </table>
+    <div id="invoicePager" class="pager hidden"></div>
     <div id="emptyState" class="empty-state hidden">まだ請求書が作成されていません。「＋ 新規作成」から作成してください。</div>
   </div>
 </div>
@@ -998,6 +1011,22 @@
     }).then(function (res) { if (res && res.ok) { invoices = res.data; renderList(); } });
   }
 
+  /** 講師の確定を取り消して「作成済み」に戻す(講師の入力内容は残る。講師は同じリンクから修正して再確定できる) */
+  function reopenInv(inv) {
+    var reason = prompt('「' + (inv.topic || '') + '」の講師の確定を取り消し、「作成済み」に戻します。\n' +
+      '講師の方は同じリンクを開くと、前回の入力内容から修正して、もう一度確定できます。\n\n' +
+      '差し戻す理由を入力してください（記録に残ります。空欄でも可）。', '');
+    if (reason === null) return; // キャンセル
+    callApi('reopenInvoice', { id: inv.id, reason: reason }).then(function (res) {
+      if (!res.ok) {
+        showToast(res.error === 'invoice_not_confirmed' ? '確定済みの請求書だけ差し戻せます（画面を更新してください）' : '差し戻しに失敗しました：' + res.error);
+        return;
+      }
+      showToast('差し戻しました。講師の方に、同じリンクから修正・再確定をご依頼ください。');
+      return callApi('listInvoices');
+    }).then(function (res) { if (res && res.ok) { invoices = res.data; renderList(); } });
+  }
+
   function voidInv(inv) {
     var reason = prompt('取消の理由があれば入力してください（空欄でも可）。\n取消後も記録は一覧に残ります（不正防止のため完全には削除されません）。', '');
     if (reason === null) return; // キャンセル
@@ -1008,12 +1037,60 @@
     }).then(function (res) { if (res && res.ok) { invoices = res.data; renderList(); } });
   }
 
+  var INVOICE_PAGE_SIZE = 10;
+  var invoicePage = 1;
+  /** 並び順の区分：0＝未完了(作成済み・確定済み)、1＝支払い済み、2＝取消 */
+  function invoiceGroupRank(inv) {
+    if (inv.status === '取消') return 2;
+    if (inv.status === '支払い済み') return 1;
+    return 0;
+  }
+  function renderInvoicePager(total, totalPages, startIdx, count) {
+    var el = $('invoicePager');
+    el.innerHTML = '';
+    if (total <= INVOICE_PAGE_SIZE) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    var info = document.createElement('div');
+    info.className = 'pager-info';
+    info.textContent = '全' + total + '件中 ' + (startIdx + 1) + '〜' + (startIdx + count) + '件を表示';
+    el.appendChild(info);
+    function addBtn(label, page, opts) {
+      opts = opts || {};
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (opts.current) { b.className = 'current'; b.setAttribute('aria-current', 'page'); }
+      if (opts.disabled || opts.current) b.disabled = true;
+      if (opts.aria) b.setAttribute('aria-label', opts.aria);
+      b.addEventListener('click', function () { goInvoicePage(page); });
+      el.appendChild(b);
+    }
+    addBtn('‹ 前へ', invoicePage - 1, { disabled: invoicePage <= 1, aria: '前のページ' });
+    // ページ番号：先頭・末尾・現在の前後1ページを表示し、間は「…」で省略する
+    var last = 0;
+    for (var p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || Math.abs(p - invoicePage) <= 1) {
+        if (last && p - last > 1) { var gap = document.createElement('span'); gap.className = 'pager-gap'; gap.textContent = '…'; el.appendChild(gap); }
+        addBtn(String(p), p, { current: p === invoicePage, aria: p + 'ページ目' });
+        last = p;
+      }
+    }
+    addBtn('次へ ›', invoicePage + 1, { disabled: invoicePage >= totalPages, aria: '次のページ' });
+  }
+  function goInvoicePage(page) {
+    invoicePage = page;
+    renderList();
+    var t = $('invoiceTable');
+    if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function renderList() {
     renderMissingInvoiceBanner();
 
     var tbody = $('invoiceTbody');
     tbody.innerHTML = '';
     if (!invoices.length) {
+      $('invoicePager').classList.add('hidden');
       $('emptyState').classList.remove('hidden');
       $('invoiceTable').classList.add('hidden');
       return;
@@ -1021,7 +1098,26 @@
     $('emptyState').classList.add('hidden');
     $('invoiceTable').classList.remove('hidden');
 
-    invoices.forEach(function (inv) {
+    // 未完了(作成済み・確定済み)を上に、完了(支払い済み)・取消を下にまとめる。同じ区分の中は作成の新しい順のまま。
+    var sorted = invoices.map(function (inv, i) { return { inv: inv, i: i }; }).sort(function (a, b) {
+      return (invoiceGroupRank(a.inv) - invoiceGroupRank(b.inv)) || (a.i - b.i);
+    }).map(function (x) { return x.inv; });
+    var totalPages = Math.max(1, Math.ceil(sorted.length / INVOICE_PAGE_SIZE));
+    if (invoicePage > totalPages) invoicePage = totalPages;
+    if (invoicePage < 1) invoicePage = 1;
+    var startIdx = (invoicePage - 1) * INVOICE_PAGE_SIZE;
+    var pageItems = sorted.slice(startIdx, startIdx + INVOICE_PAGE_SIZE);
+    renderInvoicePager(sorted.length, totalPages, startIdx, pageItems.length);
+
+    pageItems.forEach(function (inv, idx) {
+      // 未完了→完了・取消に切り替わる位置(ページの先頭が完了・取消の場合も)に区切り行を入れる
+      var prev = idx > 0 ? pageItems[idx - 1] : (startIdx > 0 ? sorted[startIdx - 1] : null);
+      if (invoiceGroupRank(inv) > 0 && (!prev || invoiceGroupRank(prev) === 0)) {
+        var dv = document.createElement('tr');
+        dv.className = 'group-divider';
+        dv.innerHTML = '<td colspan="7">完了（支払い済み）・取消の請求書</td>';
+        tbody.appendChild(dv);
+      }
       var tr = document.createElement('tr');
       if (inv.status === '取消') tr.className = 'voided';
 
@@ -1154,6 +1250,17 @@
         markPaid(inv);
       });
       list.appendChild(btnPaid);
+
+      var btnReopen = document.createElement('button');
+      btnReopen.type = 'button';
+      btnReopen.className = 'btn btn-outline';
+      btnReopen.textContent = '講師に差し戻す（修正してもらう）';
+      btnReopen.title = '講師の確定を取り消して「作成済み」に戻します。講師は同じリンクから修正して再確定できます。';
+      btnReopen.addEventListener('click', function () {
+        closeInvoiceActionsModal();
+        reopenInv(inv);
+      });
+      list.appendChild(btnReopen);
     }
 
     if (inv.status !== '取消') {

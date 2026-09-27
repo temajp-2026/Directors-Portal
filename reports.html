@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>月次報告書｜理事ポータル</title>
+<title>月次報告書（ベータ版）｜理事ポータル</title>
 <script>(function () {
   try {
     var v = localStorage.getItem('temaFontSizePref');
@@ -63,6 +63,11 @@
     border-bottom: 1px solid var(--gw-border);
   }
   .header-left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .beta-badge { display: inline-block; vertical-align: middle; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: calc(var(--fs-scale, 1) * 10.5px);
+    font-weight: 700; letter-spacing: .04em; color: #b06000; background: #fef7e0; border: 1px solid #f9d67a; }
+  .beta-note { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; font-size: calc(var(--fs-scale, 1) * 12px); line-height: 1.6;
+    color: #7a4a00; background: #fef7e0; border: 1px solid #f9d67a; }
+  @media print { .beta-badge, .beta-note { display: none !important; } }
   .app-title { font-size: calc(var(--fs-scale, 1) * 17px); font-weight: 500; letter-spacing: 0; }
   .back-link { color: var(--gw-blue); font-size: calc(var(--fs-scale, 1) * 12px); text-decoration: none; }
   .back-link:hover { text-decoration: underline; }
@@ -248,7 +253,7 @@
 <div id="appShell" class="hidden">
   <div class="app-header">
     <div class="header-left">
-      <div class="app-title">月次報告書</div>
+      <div class="app-title">月次報告書<span class="beta-badge">ベータ版</span></div>
       <a class="back-link" href="index.html">← 理事ポータルへ戻る</a>
     </div>
     <div class="fontsize-toggle" role="group" aria-label="文字サイズ切り替え">
@@ -264,6 +269,7 @@
   </div>
 
   <div class="app-body">
+    <div class="beta-note">ベータ版：この機能は現在調整中です。表示や動作が変わることがあります。気になる点があれば担当までお知らせください。</div>
     <div class="section-header">
       <div class="section-title">月次報告書</div>
       <div class="section-tools">

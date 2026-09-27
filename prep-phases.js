@@ -2,6 +2,9 @@
  * 理事ポータル：講座準備の8段階(企画決定→講師関係→募集準備→募集開始→申込管理→開催準備→開催→終了処理)の判定ロジック。
  * 講座準備進捗確認(course-progress.html)とトップ画面の「進捗状況」カード(index.html)の両方で使う共通ファイル。
  * 判定の基準を1か所にまとめ、2つの画面で完了・滞留の判定がずれないようにしている。
+ * 「不要」の選択肢(2026-09-27追加)：参加者募集フォーム・講師資料PDF・理事資料を使わない講座では、phaseJsonの
+ *   naForm / naLecturerPdf / naDirectorMaterials にチェック日を入れ、その項目を完了(不要)として扱う。
+ *   不要のチェック欄そのもの(optional:true)は、段階の完了判定には含めない。
  * 使い方: PrepPhases.evaluate(講座, { invoiceStates, materialCounts, reportedCourses, checklistItems, phases, formSummaries })
  *         (invoiceStates等はGASの getPrepOverview の戻り値。formSummariesは講座ID→参加者募集フォームの集計結果)
  */
@@ -41,6 +44,10 @@
     var form = formSummaries[c.id];
     var mat = materialCounts[c.id] || { director: 0, lecturer: 0 };
     var eventDate = parseYmd(c.eventDate);
+    var naForm = !!phaseState.naForm, naLecturerPdf = !!phaseState.naLecturerPdf, naDirectorMaterials = !!phaseState.naDirectorMaterials;
+    function naItem(key, on, label) {
+      return { type: 'check', kind: 'phase', key: key, optional: true, na: true, done: on, label: label, note: on ? (jpDate(phaseState[key]) + ' に「不要」に設定') : '' };
+    }
 
     var groups = [];
 
@@ -62,7 +69,8 @@
     // 3 募集準備
     groups.push([
       { type: 'auto', done: !!c.pdfFileId, label: '講座案内PDFを登録した', note: c.pdfFileId ? (c.pdfFileName || '') : '講座進捗ページの「PDF機能」から登録できます' },
-      { type: 'auto', done: !!c.formSheetUrl, label: '参加者募集フォームを登録した', note: c.formSheetUrl ? '' : '講座進捗ページの「⑤ 参加者募集フォーム」に回答用スプレッドシートのURLを登録してください' }
+      { type: 'auto', done: !!c.formSheetUrl || naForm, label: '参加者募集フォームを登録した', note: c.formSheetUrl ? '' : (naForm ? '不要（この講座では参加者募集フォームを使いません）' : '講座進捗ページの「⑤ 参加者募集フォーム」に回答用スプレッドシートのURLを登録してください') },
+      naItem('naForm', naForm, '参加者募集フォームは使わない（不要）')
     ]);
 
     // 4 募集開始
@@ -72,7 +80,8 @@
 
     // 5 申込管理
     var appNote = '';
-    if (!c.formSheetUrl) appNote = '参加者募集フォームが未登録のため、申込数は表示できません';
+    if (!c.formSheetUrl && naForm) appNote = '参加者募集フォームを使わない講座です（申込は別の方法で管理）';
+    else if (!c.formSheetUrl) appNote = '参加者募集フォームが未登録のため、申込数は表示できません';
     else if (!form || form.loading) appNote = '申込数を取得中…';
     else if (form.error) appNote = '申込数を取得できませんでした';
     else appNote = '合計 ' + form.total + '件（会場 ' + form.venueCount + '件／ZOOM ' + form.zoomCount + '件）';
@@ -85,8 +94,10 @@
     var prepItems = checklistItems.map(function (item) {
       return { type: 'check', kind: 'checklist', key: item, done: !!checklist[item], label: item };
     });
-    prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : '講座進捗ページの「④ 講師資料PDF」から登録できます' });
-    prepItems.push({ type: 'info', label: '資料庫の資料', note: '理事 ' + mat.director + '件／講師 ' + mat.lecturer + '件' });
+    prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId || naLecturerPdf, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : (naLecturerPdf ? '不要（この講座では講師資料PDFはありません）' : '講座進捗ページの「④ 講師資料PDF」から登録できます') });
+    prepItems.push(naItem('naLecturerPdf', naLecturerPdf, '講師資料PDFはない（不要）'));
+    prepItems.push({ type: 'info', label: '資料庫の資料', note: '理事 ' + (naDirectorMaterials && !mat.director ? '不要' : mat.director + '件') + '／講師 ' + mat.lecturer + '件' });
+    prepItems.push(naItem('naDirectorMaterials', naDirectorMaterials, '理事資料はない（不要）'));
     groups.push(prepItems);
 
     // 7 開催(⑤)
@@ -106,7 +117,7 @@
     var eventIdx = phases.map(function (p) { return p.key; }).indexOf('event');
     var result = phases.map(function (ph, i) {
       var items = groups[i] || [];
-      var judged = items.filter(function (it) { return it.type !== 'info'; });
+      var judged = items.filter(function (it) { return it.type !== 'info' && !it.optional; });
       var done = judged.length > 0 && judged.every(function (it) { return it.done; });
       var target = eventDate ? addDays(eventDate, ph.offsetDays) : null;
       // 開催済みの講座では、開催より前の段階が未チェックでも今から対応する意味はないため、
@@ -117,7 +128,8 @@
     });
     var currentIdx = -1;
     for (var i = 0; i < result.length; i++) { if (!result[i].done && !result[i].skipped) { currentIdx = i; break; } }
-    return { phases: result, currentIdx: currentIdx, cancelled: cancelled, invActive: invActive };
+    return { phases: result, currentIdx: currentIdx, cancelled: cancelled, invActive: invActive,
+      na: { form: naForm, lecturerPdf: naLecturerPdf, directorMaterials: naDirectorMaterials } };
   }
 
   /** 請求書由来のアラート(ダッシュボードと同じ基準) */

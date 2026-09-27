@@ -302,6 +302,10 @@
   table.mx-table td.mx-name button:hover { text-decoration: underline; }
   table.mx-table td.mx-date { white-space: nowrap; color: var(--gw-text-secondary); }
   .mx-mark { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .pd-item.pd-na { margin-left: 26px; color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 12.5px); border-top-style: dashed; }
+  .pd-item.pd-na input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--gw-text-secondary); }
+  .pd-item.pd-na .pd-text { color: var(--gw-text-secondary); }
+  .mx-mark.na { background: var(--gw-bg); color: var(--gw-text-secondary); border: 1px dashed var(--gw-border); font-size: 10px; width: auto; padding: 0 6px; border-radius: 999px; }
   .mx-mark.done { background: var(--gw-green); color: #fff; }
   .mx-mark.overdue { background: var(--gw-red-tint); color: var(--gw-red); border: 1.5px solid var(--gw-red); }
   .mx-mark.pending { color: var(--gw-border); }
@@ -697,8 +701,15 @@
     list.forEach(function (c) { wrap.appendChild(buildCourseCard(c)); });
   }
 
+  /** 「不要」の設定(phaseJsonのnaForm/naLecturerPdf/naDirectorMaterials) */
+  function naState(c) {
+    var s = {};
+    try { s = JSON.parse(c.phaseJson || '{}') || {}; } catch (e) { s = {}; }
+    return { form: !!s.naForm, lecturerPdf: !!s.naLecturerPdf, directorMaterials: !!s.naDirectorMaterials };
+  }
+
   function formChipHtml(c) {
-    if (!c.formSheetUrl) return '';
+    if (!c.formSheetUrl) return naState(c).form ? '<span class="chip">申込フォーム 不要</span>' : '';
     var f = formSummaries[c.id];
     if (!f || f.loading) return '<span class="chip">申込 取得中…</span>';
     if (f.error) return '<span class="chip">申込 取得できず</span>';
@@ -707,7 +718,9 @@
 
   function materialChipHtml(c) {
     var m = materialCounts[c.id];
-    if (!m || (!m.director && !m.lecturer)) return '<span class="chip">資料 0件</span>';
+    var naDir = naState(c).directorMaterials;
+    if (!m || (!m.director && !m.lecturer)) return '<span class="chip">資料 0件' + (naDir ? '（理事資料 不要）' : '') + '</span>';
+    if (!m.director && naDir) return '<span class="chip chip-green">資料 理事不要・講師' + m.lecturer + '</span>';
     return '<span class="chip chip-green">資料 理事' + m.director + '・講師' + m.lecturer + '</span>';
   }
 
@@ -790,7 +803,7 @@
     }
     p.items.forEach(function (it) {
       var row = document.createElement('div');
-      row.className = 'pd-item';
+      row.className = 'pd-item' + (it.optional ? ' pd-na' : '');
       var noteHtml = it.note ? '<span class="pd-note">' + escapeHtml(it.note) + '</span>' : '';
       if (it.type === 'check') {
         var label = document.createElement('label');
@@ -849,7 +862,7 @@
         html += '<td><span class="mx-mark ' + cls + '" title="' + escapeHtml(title) + '">' + mark + '</span></td>';
       });
       var f = formSummaries[c.id];
-      var formText = !c.formSheetUrl ? '－' : (!f || f.loading ? '…' : (f.error ? '×' : f.total + '件'));
+      var formText = !c.formSheetUrl ? (naState(c).form ? '不要' : '－') : (!f || f.loading ? '…' : (f.error ? '×' : f.total + '件'));
       var m = materialCounts[c.id] || { director: 0, lecturer: 0 };
       html += '<td style="white-space:nowrap;">' + formText + '</td><td style="white-space:nowrap;">' + (m.director + m.lecturer) + '件</td></tr>';
     });
@@ -885,7 +898,8 @@
         html += '<td><input type="checkbox" data-course="' + escapeHtml(c.id) + '" data-item="' + escapeHtml(item) + '"' + (state[item] ? ' checked' : '') +
           ' aria-label="' + escapeHtml((c.name || '') + '：' + item) + '"></td>';
       });
-      html += '<td><span class="mx-mark ' + (c.lecturerMaterialFileId ? 'done' : 'pending') + '">' + (c.lecturerMaterialFileId ? '✓' : '●') + '</span></td>';
+      html += '<td>' + (c.lecturerMaterialFileId ? '<span class="mx-mark done">✓</span>'
+        : (naState(c).lecturerPdf ? '<span class="mx-mark na">不要</span>' : '<span class="mx-mark pending">●</span>')) + '</td>';
       var cls = prep.done ? 'done' : (prep.overdue ? 'overdue' : 'pending');
       html += '<td><span class="mx-mark ' + cls + '">' + (prep.done ? '✓' : (prep.overdue ? '!' : '●')) + '</span>' +
         (prep.target ? '<span class="mx-sub">目安' + md(prep.target) + '</span>' : '') + '</td></tr>';

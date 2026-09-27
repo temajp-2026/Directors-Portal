@@ -165,11 +165,60 @@
     .doc-title { font-size: calc(var(--fs-scale, 1) * 20px); }
   }
 
+  /* ===== 印刷(A4縦・2ページに収める／文字はすべて黒) ===== */
+  @page { size: A4 portrait; margin: 10mm 12mm; }
   @media print {
     .no-print { display: none !important; }
-    .page-shell { padding: 0 !important; background: #ffffff !important; align-items: stretch !important; }
-    .a4-page { box-shadow: none !important; border: none !important; border-radius: 0 !important; width: 210mm; max-width: 210mm; padding: 14mm 16mm; margin: 0 auto; }
     html { --fs-scale: 1 !important; }
+    html, body { background: #ffffff !important; }
+    .page-shell { padding: 0 !important; background: #ffffff !important; align-items: stretch !important; }
+    .a4-page { box-shadow: none !important; border: none !important; border-radius: 0 !important; width: 100% !important; max-width: none !important; padding: 0; margin: 0; }
+    #docShell { width: 100% !important; }
+    #travelFeeSection { margin-bottom: 6px; }
+    /* 文字は黒で統一(グレーの補足文字・入力済みの欄・無効化された欄も黒にする) */
+    .a4-page, .a4-page * { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+    .a4-page ::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+    .doc-title { font-size: 19px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 2px solid #000; }
+    .doc-meta { font-size: 10.5px; margin: 6px 0 10px; }
+    .recipient { font-size: 14.5px; padding-bottom: 5px; margin-bottom: 10px; border-bottom-color: #000; }
+    .lead-text { font-size: 11.5px; line-height: 1.6; }
+    .director-message-box { background: none; border: 1px solid #000; padding: 6px 10px; margin-top: 8px; }
+    .director-message-label { font-size: 10.5px; margin-bottom: 2px; }
+    .director-message-text { font-size: 11.5px; line-height: 1.5; }
+    .section-title { font-size: 12.5px; font-weight: 700; background: #e8e8e8 !important; padding: 4px 10px; margin: 12px 0 0; border-radius: 0; border: 1px solid #555; border-bottom: none;
+      break-after: avoid; page-break-after: avoid; }
+    table.doc-table { font-size: 12px; }
+    table.doc-table th, table.doc-table td { border: 1px solid #555; padding: 5px 10px; }
+    table.doc-table th { background: #f3f3f3 !important; font-weight: 500; }
+    table.doc-table tr.total-row th, table.doc-table tr.total-row td { background: #e8e8e8 !important; font-size: 12px; }
+    table.doc-table, .equipment-box, .signature-row { break-inside: avoid; page-break-inside: avoid; }
+    .equipment-box { border-color: #555; padding: 6px 10px; font-size: 11.5px; line-height: 1.5; }
+    /* 講師記入欄：入力欄は下線だけの記入済み表示にして、高さを詰める */
+    .lecturer-box { background: none !important; border: 1px solid #555; border-radius: 0; margin-top: 0; padding: 8px 12px 10px; break-inside: avoid; page-break-inside: avoid; }
+    .lecturer-note { display: none; }
+    .field-grid { gap: 6px 18px; }
+    .field-grid + .field-grid, .lecturer-box .field-grid[style] { margin-top: 6px !important; }
+    .field label, .field .field-label { font-size: 10px; font-weight: 700; margin-bottom: 1px; }
+    input[type="text"], input[type="date"], input[type="number"], select, textarea {
+      border: none !important; border-bottom: 1px solid #555 !important; border-radius: 0 !important; background: none !important;
+      padding: 1px 2px !important; font-size: 12px !important; height: auto; opacity: 1 !important;
+      -webkit-appearance: none; appearance: none; box-shadow: none !important; outline: none !important;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+    textarea { resize: none; }
+    .radio-group { gap: 14px; font-size: 11.5px; }
+    .radio-group label { gap: 4px; }
+    input[type="radio"] {
+      -webkit-appearance: none; appearance: none; width: 11px; height: 11px; margin: 0; border: 1px solid #000; border-radius: 50%;
+      background: #fff !important; position: relative; opacity: 1 !important; flex-shrink: 0;
+    }
+    input[type="radio"]:checked { background: radial-gradient(circle, #000 0 3px, #fff 3.5px) !important; }
+    .signature-row { margin-top: 6px; }
+    .signature-fields { font-size: 11.5px; max-width: 340px; }
+    .signature-fields .sig-note { font-size: 11px; margin: 0 0 4px; }
+    .signature-fields .sig-line { margin-top: 4px; }
+    .signature-fields input { width: 180px; }
+    .field-error { display: none !important; }
   }
 </style>
 </head>
@@ -363,7 +412,7 @@
         お支払いの完了から3日が過ぎたため、個人情報保護のため振込先は口座番号の下4桁のみ表示しています。
       </div>
       <div id="confirmedNote" class="confirmed-note hidden no-print">
-        この内容で確定済みです。内容を変更する場合は、担当理事までご連絡ください。<br>
+        この内容で確定済みです。内容を変更する場合は、担当理事までご連絡ください（担当理事が差し戻すと、このページから修正して再確定できるようになります）。<br>
         下のボタンから確定内容を印刷・PDF保存できます。
       </div>
 

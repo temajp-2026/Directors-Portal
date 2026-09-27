@@ -300,6 +300,8 @@
   .menu-heading { font-size: calc(var(--fs-scale, 1) * 16px); font-weight: 500; color: var(--gw-text); margin: 4px 0 12px; }
   .menu-item.disabled { color: #9aa0a6; cursor: default; pointer-events: none; background: var(--gw-bg); }
   .menu-item-title { font-weight: 500; font-size: calc(var(--fs-scale, 1) * 13.5px); margin-bottom: 4px; }
+  .menu-beta { display: inline-block; vertical-align: 1px; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: calc(var(--fs-scale, 1) * 9.5px);
+    font-weight: 700; letter-spacing: .03em; color: #b06000; background: #fff; border: 1px solid #f0b54a; white-space: nowrap; }
   .menu-item-desc { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); line-height: 1.5; }
   .menu-item-tag {
     display: inline-block; font-size: calc(var(--fs-scale, 1) * 10.5px); font-weight: 500; padding: 2px 9px; border-radius: 999px;
@@ -457,27 +459,82 @@
     .menu-grid { grid-template-columns: minmax(0, 1fr); }
   }
 
-  /* ---------- 振込担当者用 一括印刷 ---------- */
+  /* ---------- 振込担当者用 一括印刷 ----------
+     1件の請求書を、横向き印刷では2行・縦向き印刷では3行のカードにまとめ、全項目が折り返して必ず見えるようにする
+     (以前は横に長い1行の表で、印刷すると右側が切れてスクロールバーが印刷されていた)。 */
   .print-modal-panel { max-height: 92vh; }
   .print-doc-title { font-size: calc(var(--fs-scale, 1) * 17px); font-weight: 500; margin-bottom: 4px; }
-  .print-doc-sub { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-bottom: 16px; }
-  .print-table { width: 100%; border-collapse: collapse; font-size: calc(var(--fs-scale, 1) * 12px); }
-  .print-table th, .print-table td { border: 1px solid var(--gw-border); padding: 7px 8px; text-align: left; white-space: nowrap; }
-  .print-table th { background: var(--gw-bg); font-weight: 500; }
-  .print-table td.amount, .print-table th:last-child, .print-table td:last-child { text-align: right; }
-  /* 振込先一覧は列数が多く、印刷用にnowrapで組んでいるため、画面上(特にスマホ)では
-     横スクロールで全体を確認できるようにする(印刷時は@media printでscroll解除)。 */
-  .print-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px 4px; }
-  .print-table-hint { display: none; font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); margin-bottom: 8px; }
-  @media (max-width: 640px) { .print-table-hint { display: block; } }
+  .print-doc-sub { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-bottom: 14px; }
+  .bp-list { display: flex; flex-direction: column; gap: 8px; }
+  .bp-item { display: flex; border: 1px solid #9aa0a6; border-radius: 4px; break-inside: avoid; page-break-inside: avoid; }
+  .bp-no { flex: 0 0 30px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: calc(var(--fs-scale, 1) * 12px);
+    border-right: 1px solid #9aa0a6; background: var(--gw-bg); }
+  .bp-grid { flex: 1; min-width: 0; display: grid; }
+  .bp-cell { padding: 4px 8px; border-right: 1px solid #dadce0; border-bottom: 1px solid #dadce0; min-width: 0; }
+  .bp-label { display: block; font-size: calc(var(--fs-scale, 1) * 10px); color: var(--gw-text-secondary); line-height: 1.3; }
+  .bp-value { display: block; font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text); line-height: 1.45; word-break: break-all; overflow-wrap: anywhere; }
+  .bp-amount .bp-value { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .bp-amount .bp-label { text-align: right; }
+  .bp-course { grid-area: course; } .bp-lecturer { grid-area: lecturer; } .bp-due { grid-area: due; } .bp-amount { grid-area: amount; }
+  .bp-bank { grid-area: bank; } .bp-branch { grid-area: branch; } .bp-type { grid-area: type; } .bp-number { grid-area: number; } .bp-holder { grid-area: holder; }
+  /* 2行(横長の画面・横向き印刷) */
+  .bp-grid {
+    grid-template-columns: 1.3fr 1fr 0.55fr 1fr 1.2fr 0.9fr;
+    grid-template-areas:
+      "course course course lecturer due amount"
+      "bank branch type number holder holder";
+  }
+  .bp-total { display: flex; justify-content: flex-end; gap: 18px; align-items: baseline; margin-top: 10px; padding: 8px 12px;
+    border: 1px solid #9aa0a6; border-radius: 4px; font-weight: 700; font-size: calc(var(--fs-scale, 1) * 13.5px); break-inside: avoid; }
+  /* 3行(スマホ・縦向き印刷) */
+  @media screen and (max-width: 760px) {
+    .bp-grid {
+      grid-template-columns: 1fr 1fr 0.6fr 1fr;
+      grid-template-areas:
+        "course course course due"
+        "lecturer holder holder amount"
+        "bank branch type number";
+    }
+  }
   @media print {
-    body * { visibility: hidden; }
-    #paymentBulkPrintModal, #paymentBulkPrintModal * { visibility: visible; }
-    #paymentBulkPrintModal { position: absolute; top: 0; left: 0; width: 100%; background: #fff; }
-    #paymentBulkPrintModal .modal-panel { max-width: none; max-height: none; box-shadow: none; border: none; padding: 0; }
+    @page { margin: 10mm; }
+    /* 一覧を開いている間の印刷では、一覧以外の画面要素を「非表示」ではなく「存在しない」扱いにして、
+       前後に白紙のページが出ないようにする */
+    body.bulk-printing > *:not(#paymentBulkPrintModal) { display: none !important; }
+    body.bulk-printing { background: #fff !important; }
+    body.bulk-printing #paymentBulkPrintModal { position: static !important; display: block !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
+    body.bulk-printing #paymentBulkPrintModal .modal-panel { max-width: none !important; max-height: none !important; width: auto !important; overflow: visible !important;
+      box-shadow: none !important; border: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
+    body.bulk-printing #bulkPrintArea, body.bulk-printing #bulkPrintArea * { color: #000 !important; }
     .no-print { display: none !important; }
-    .print-table { font-size: calc(var(--fs-scale, 1) * 11px); }
-    .print-table-scroll { overflow-x: visible; margin: 0; padding: 0; }
+    .print-doc-title { font-size: 16px; }
+    .print-doc-sub { font-size: 11px; margin-bottom: 8px; }
+    .bp-list { gap: 5px; }
+    .bp-item, .bp-no, .bp-total { border-color: #000; }
+    .bp-no { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .bp-cell { border-color: #999; padding: 3px 6px; }
+    .bp-label { font-size: 9px; }
+    .bp-value { font-size: 11px; }
+    .bp-total { font-size: 12.5px; }
+  }
+  /* 縦向き印刷：3行 */
+  @media print and (orientation: portrait) {
+    .bp-grid {
+      grid-template-columns: 1fr 1fr 0.6fr 1fr;
+      grid-template-areas:
+        "course course course due"
+        "lecturer holder holder amount"
+        "bank branch type number";
+    }
+  }
+  /* 横向き印刷：2行 */
+  @media print and (orientation: landscape) {
+    .bp-grid {
+      grid-template-columns: 1.3fr 1fr 0.55fr 1fr 1.2fr 0.9fr;
+      grid-template-areas:
+        "course course course lecturer due amount"
+        "bank branch type number holder holder";
+    }
   }
 </style>
 </head>
@@ -609,7 +666,7 @@
         <div class="menu-item-desc">全講座の準備状況を8段階で確認し、チェックを付けて更新します。</div>
       </a>
       <a class="menu-item menu-c-orange" href="reports.html">
-        <div class="menu-item-title">月次報告書</div>
+        <div class="menu-item-title">月次報告書<span class="menu-beta">ベータ版</span></div>
         <div class="menu-item-desc">担当科ごとの月次報告書を作成・編集し、まとめてPDF化します。</div>
       </a>
       <a class="menu-item menu-c-purple" href="materials.html">
@@ -617,7 +674,7 @@
         <div class="menu-item-desc">講座ごとの資料をアップロード・管理します。講師用リンクから講師も資料を提出できます。</div>
       </a>
       <a class="menu-item menu-c-pink" href="sns.html">
-        <div class="menu-item-title">SNS文章作成＆履歴</div>
+        <div class="menu-item-title">SNS文章作成＆履歴<span class="menu-beta">ベータ版</span></div>
         <div class="menu-item-desc">講座のInstagram投稿文を雛形から作成し、投稿予定と投稿済みの履歴を管理します。</div>
       </a>
     </div>
@@ -897,31 +954,8 @@
     <div id="bulkPrintArea">
       <div class="print-doc-title">支払い待ち請求書　振込先一覧</div>
       <div class="print-doc-sub" id="bulkPrintGeneratedAt"></div>
-      <div class="print-table-hint no-print">→ 横にスワイプすると全項目を確認できます</div>
-      <div class="print-table-scroll">
-      <table class="print-table" id="bulkPrintTable">
-        <thead>
-          <tr>
-            <th>講座名</th>
-            <th>講師名</th>
-            <th>支払予定日</th>
-            <th>金融機関</th>
-            <th>支店名</th>
-            <th>口座種別</th>
-            <th>口座番号</th>
-            <th>口座名義（カナ）</th>
-            <th>振込金額</th>
-          </tr>
-        </thead>
-        <tbody id="bulkPrintTbody"></tbody>
-        <tfoot>
-          <tr>
-            <td colspan="8" style="text-align:right; font-weight:500;">合計</td>
-            <td id="bulkPrintTotal" style="font-weight:500;"></td>
-          </tr>
-        </tfoot>
-      </table>
-      </div>
+      <div id="bulkPrintList" class="bp-list"></div>
+      <div id="bulkPrintTotalRow" class="bp-total"><span>合計（<span id="bulkPrintCount">0</span>件）</span><span id="bulkPrintTotal"></span></div>
       <div id="bulkPrintEmpty" class="dash-empty hidden">支払い待ちの請求書はありません。</div>
     </div>
   </div>
@@ -1745,51 +1779,70 @@
    */
   function openPaymentBulkPrint() {
     var pending = pendingPaymentInvoices(invoicesCache);
-    var tbody = $('bulkPrintTbody');
-    tbody.innerHTML = '';
-    $('bulkPrintGeneratedAt').textContent = '作成日：' + jpDate(new Date().toISOString().slice(0, 10));
+    var list = $('bulkPrintList');
+    list.innerHTML = '';
+    $('bulkPrintGeneratedAt').textContent = '作成日：' + jpDate(new Date().toISOString().slice(0, 10)) +
+      '　（縦向きで印刷すると1件3行、横向きで印刷すると1件2行で表示されます）';
 
     if (!pending.length) {
-      $('bulkPrintTable').classList.add('hidden');
+      list.classList.add('hidden');
+      $('bulkPrintTotalRow').classList.add('hidden');
       $('bulkPrintEmpty').classList.remove('hidden');
       $('bulkPrintTotal').textContent = '';
     } else {
-      $('bulkPrintTable').classList.remove('hidden');
+      list.classList.remove('hidden');
+      $('bulkPrintTotalRow').classList.remove('hidden');
       $('bulkPrintEmpty').classList.add('hidden');
       var grandTotal = 0;
-      pending.forEach(function (inv) {
+      pending.forEach(function (inv, idx) {
         var course = courses.filter(function (c) { return c.id === inv.courseId; })[0];
         var name = (course && course.name) || inv.topic || '(講座名未設定)';
         var total = calcActualPayableTotal(inv);
         grandTotal += total;
-        var tr = document.createElement('tr');
+        var item = document.createElement('div');
+        item.className = 'bp-item';
+        var no = document.createElement('div');
+        no.className = 'bp-no';
+        no.textContent = String(idx + 1);
+        item.appendChild(no);
+        var grid = document.createElement('div');
+        grid.className = 'bp-grid';
         [
-          name,
-          inv.lecturerName || '(未確定)',
-          inv.paymentDueDate ? jpDate(inv.paymentDueDate) : '未設定',
-          inv.bankName || '',
-          inv.branchName || '',
-          inv.accountType || '',
-          inv.accountNumber || '',
-          inv.accountHolderKana || ''
-        ].forEach(function (text) {
-          var td = document.createElement('td');
-          td.textContent = text;
-          tr.appendChild(td);
+          ['bp-course', '講座名', name],
+          ['bp-lecturer', '講師名', inv.lecturerName || '(未確定)'],
+          ['bp-due', '支払予定日', inv.paymentDueDate ? jpDate(inv.paymentDueDate) : '未設定'],
+          ['bp-amount', '振込金額', '¥' + total.toLocaleString()],
+          ['bp-bank', '金融機関', inv.bankName || '－'],
+          ['bp-branch', '支店名', inv.branchName || '－'],
+          ['bp-type', '口座種別', inv.accountType || '－'],
+          ['bp-number', '口座番号', inv.accountNumber || '－'],
+          ['bp-holder', '口座名義（カナ）', inv.accountHolderKana || '－']
+        ].forEach(function (f) {
+          var cell = document.createElement('div');
+          cell.className = 'bp-cell ' + f[0];
+          var lb = document.createElement('span');
+          lb.className = 'bp-label';
+          lb.textContent = f[1];
+          var val = document.createElement('span');
+          val.className = 'bp-value';
+          val.textContent = f[2];
+          cell.appendChild(lb);
+          cell.appendChild(val);
+          grid.appendChild(cell);
         });
-        var tdAmount = document.createElement('td');
-        tdAmount.className = 'amount';
-        tdAmount.textContent = '¥' + total.toLocaleString();
-        tr.appendChild(tdAmount);
-        tbody.appendChild(tr);
+        item.appendChild(grid);
+        list.appendChild(item);
       });
+      $('bulkPrintCount').textContent = String(pending.length);
       $('bulkPrintTotal').textContent = '¥' + grandTotal.toLocaleString();
     }
+    document.body.classList.add('bulk-printing');
     $('paymentBulkPrintModal').classList.remove('hidden');
   }
 
   function closePaymentBulkPrint() {
     $('paymentBulkPrintModal').classList.add('hidden');
+    document.body.classList.remove('bulk-printing');
   }
 
   /** 講座に紐付く請求書のうち、参照すべき1件を選ぶ(取消以外・最新更新を優先) */
@@ -1869,7 +1922,7 @@
         html += '<td><span class="pt-mark ' + cls + '" title="' + escapeHtmlLocal(p.label + '：' + stateText + targetText) + '">' + mark + '</span></td>';
       });
       var f = formSummaryCache[c.id];
-      var formCell = '－';
+      var formCell = (ev && ev.na && ev.na.form) ? '不要' : '－';
       if (c.formSheetUrl) {
         var label = !f ? '…' : (f.error ? '取得できず' : (f.total + '件'));
         var title = (f && !f.error) ? ('会場' + f.venueCount + '件／ZOOM' + f.zoomCount + '件（押すと回答用スプレッドシートを開きます）') : '回答用スプレッドシートを開く';
@@ -2299,6 +2352,11 @@
     });
   }
 
+  /** 講座準備進捗確認で「講師資料PDFはない（不要）」に設定されているか */
+  function naLecturerPdfOf(course) {
+    try { return !!(JSON.parse(course.phaseJson || '{}') || {}).naLecturerPdf; } catch (e) { return false; }
+  }
+
   function renderPrepMaterialSection(course) {
     var has = !!course.lecturerMaterialFileId;
     $('ppMaterialNone').classList.toggle('hidden', has);
@@ -2435,7 +2493,7 @@
       prepChecklistJson: JSON.stringify(checklist),
       // ダッシュボードの「④講座準備資料作成済み」は、③の備品チェックが全て完了 かつ
       // ④の講師資料PDFがアップロード済みの、両方を満たしたときだけ完了扱いにする。
-      prepMaterialsDone: items.length > 0 && doneCount === items.length && !!(activeCourse && activeCourse.lecturerMaterialFileId),
+      prepMaterialsDone: items.length > 0 && doneCount === items.length && !!(activeCourse && (activeCourse.lecturerMaterialFileId || naLecturerPdfOf(activeCourse))),
       formSheetUrl: $('pp-formSheetUrl').value.trim(),
       formVenueColumnOverride: $('pp-formVenueColumnOverride').value.trim()
     };
