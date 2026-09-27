@@ -216,6 +216,8 @@
   /* お知らせ（tema.jp） */
   .link-small { font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-blue); text-decoration: none; white-space: nowrap; }
   .link-small:hover { text-decoration: underline; }
+  .calendar-add-note { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--gw-border); font-size: calc(var(--fs-scale, 1) * 11px);
+    color: var(--gw-text-secondary); line-height: 1.6; }
   .announcement-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
   .announcement-item {
     display: block; padding: 7px 8px; border-radius: 8px; font-size: calc(var(--fs-scale, 1) * 12.5px);
@@ -610,10 +612,17 @@
     </a>
     <div class="dashboard-grid">
       <div class="dash-card">
-        <div class="dash-card-title">直近の予定（Googleカレンダー）</div>
+        <div class="dash-card-title-row">
+          <div class="dash-card-title">直近の予定（Googleカレンダー）</div>
+          <a class="link-small" href="https://calendar.google.com/calendar/embed?src=tema.jp.analytics%40gmail.com&amp;ctz=Asia%2FTokyo" target="_blank" rel="noopener">カレンダーで見る ↗</a>
+        </div>
         <div id="calendarList" class="calendar-list"></div>
         <div id="calendarEmpty" class="dash-empty hidden">直近の予定はありません。</div>
         <div id="calendarError" class="dash-error hidden">カレンダーを表示できません。管理者にカレンダーの共有設定をご確認いただいてください。</div>
+        <div class="calendar-add-note">
+          <a class="link-small" href="https://calendar.google.com/calendar/u/0/r?cid=dGVtYS5qcC5hbmFseXRpY3NAZ21haWwuY29t" target="_blank" rel="noopener">＋ 自分のGoogleカレンダーに追加する</a>
+          <span>（一度追加すると、スマホのカレンダーアプリにも研究会の予定が表示されます）</span>
+        </div>
         <div id="calendarLoading" class="dash-empty">読み込み中…</div>
       </div>
       <div class="dash-card">
