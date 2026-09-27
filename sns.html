@@ -777,6 +777,10 @@
   // PDFの描画には pdf.js(Mozilla製・無料)を使う。画面を開いたときではなく、画像を作るときにだけ読み込む。
   var PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
   var PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  // 日本語の文字を正しく描画するための対応表(CMap)と標準フォント。これが無いと、PDFに埋め込まれていない
+  // 日本語フォント(WordやPublisherで作ったチラシに多い)の文字が描画されず、写真や図形だけの画像になってしまう。
+  var PDFJS_CMAP_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/';
+  var PDFJS_STANDARD_FONT_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/';
   var IMAGE_SIZE = 1080;     // Instagramの正方形投稿のサイズ
   var IMAGE_MARGIN = 40;     // 画像のまわりの白い余白
   var MAX_IMAGE_PAGES = 10;  // 画像にするページ数の上限
@@ -863,7 +867,12 @@
     btn.disabled = true;
     clearImages('講座案内PDFを読み込んでいます…');
     Promise.all([loadPdfJs(), getPdfBytes(courseId)]).then(function (r) {
-      return r[0].getDocument({ data: r[1].slice() }).promise;
+      return r[0].getDocument({
+        data: r[1].slice(),
+        cMapUrl: PDFJS_CMAP_URL,
+        cMapPacked: true,
+        standardFontDataUrl: PDFJS_STANDARD_FONT_URL
+      }).promise;
     }).then(function (pdf) {
       var total = pdf.numPages;
       var count = Math.min(total, MAX_IMAGE_PAGES);
