@@ -2003,7 +2003,11 @@
       if (!res.ok) {
         var msg = res.error === 'not_allowed'
           ? 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。'
-          : 'ログインに失敗しました。時間をおいて再度お試しください。';
+          : res.reason === 'email_unverified'
+            ? 'このGoogleアカウントは、メールアドレスの確認が済んでいないためログインできません。Googleから届いた確認メールのリンクを押してから、もう一度お試しください。'
+            : res.reason === 'wrong_client'
+              ? 'ログインの設定に不整合があります（CLIENT_ID）。管理者にご連絡ください。'
+              : 'ログインに失敗しました。時間をおいて再度お試しください。' + (res.error ? '（' + res.error + (res.reason ? '／' + res.reason : '') + '）' : '');
         var el = $('loginError');
         el.textContent = msg;
         el.style.display = 'block';
