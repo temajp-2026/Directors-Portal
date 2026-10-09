@@ -378,18 +378,37 @@
 
   // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、同じタブ内で移動してきた場合は再ログインを求めない。
   var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  var AUTH_MAX_AGE_MS = 6 * 60 * 60 * 1000; // サーバー側のログイン記憶(6時間)と合わせる
+  /* ログイン情報はブラウザ内(localStorage)に6時間だけ保存し、同じブラウザの別のタブ・別の画面でも再ログイン不要にする。
+   * (以前はタブごとの sessionStorage だったため、新しいタブで開いた画面や、一時保存の容量不足のときに
+   *  毎回ログインを求められることがあった。ログアウトすると全タブで消える) */
   function saveAuthToStorage() {
-    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+    var data = JSON.stringify({ idToken: currentIdToken, user: currentUser, savedAt: Date.now() });
+    try { localStorage.setItem(AUTH_STORAGE_KEY, data); }
+    catch (e) {
+      try { // 容量不足のときは、画面表示の一時保存を消してからもう一度保存する
+        for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (k && k !== AUTH_STORAGE_KEY && k.indexOf('riji_dash_cache:') === 0) localStorage.removeItem(k); }
+        localStorage.setItem(AUTH_STORAGE_KEY, data);
+      } catch (e2) {}
+    }
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e3) {}
   }
   function clearAuthStorage() {
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
     try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
   }
   function loadAuthFromStorage() {
+    var raw = null;
+    try { raw = localStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {}
+    if (!raw) { try { raw = sessionStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {} } // 以前の形式(移行用)
+    if (!raw) return null;
     try {
-      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      var d = JSON.parse(raw);
+      if (d && d.savedAt && Date.now() - d.savedAt > AUTH_MAX_AGE_MS) { clearAuthStorage(); return null; }
+      return d;
     } catch (e) { return null; }
   }
+
 
   function $(id) { return document.getElementById(id); }
 

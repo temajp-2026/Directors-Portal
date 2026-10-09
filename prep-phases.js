@@ -45,6 +45,9 @@
     var mat = materialCounts[c.id] || { director: 0, lecturer: 0 };
     var eventDate = parseYmd(c.eventDate);
     var naForm = !!phaseState.naForm, naLecturerPdf = !!phaseState.naLecturerPdf, naDirectorMaterials = !!phaseState.naDirectorMaterials;
+    var naLecturer = !!phaseState.naLecturer, naCoursePdf = !!phaseState.naCoursePdf; // 講師なし(勉強会など)／講座案内PDFなし
+    // 謝礼0円の請書(支払いなし)は、講師が確定した時点で支払いまで完了とみなす
+    var noPayment = !!(invActive && invActive.noPayment && (invActive.status === '確定済み' || invActive.status === '支払い済み'));
     function naItem(key, on, label) {
       return { type: 'check', kind: 'phase', key: key, optional: true, na: true, done: on, label: label, note: on ? (jpDate(phaseState[key]) + ' に「不要」に設定') : '' };
     }
@@ -60,15 +63,21 @@
 
     // 2 講師関係(①②③)
     var invNote = invActive ? ('請求書のステータス：' + invActive.status) : (inv ? '請求書は取り消されています' : '請求書管理簿で作成してください');
-    groups.push([
+    var NO_LECT = '講師なしの講座のため不要';
+    groups.push(naLecturer ? [
+      { type: 'auto', done: true, label: '講師関係（打ち合わせ・請書兼請求書）', note: NO_LECT },
+      naItem('naLecturer', true, '講師がいない講座（勉強会など）')
+    ] : [
       { type: 'check', kind: 'lecturerMeetingDone', done: !!c.lecturerMeetingDone, label: '① 講師打ち合わせ済み', note: '打ち合わせメモは講座進捗ページで記入できます' },
-      { type: 'auto', done: !!invActive, label: '② 請書兼請求書を送付した', note: invNote },
-      { type: 'auto', done: !!(invActive && (invActive.status === '確定済み' || invActive.status === '支払い済み')), label: '③ 講師から返信があった（請求書が確定済み）', note: invActive ? '' : '請求書の発行後、講師が内容を確定すると完了になります' }
+      { type: 'auto', done: !!invActive, label: '② 請書兼請求書を送付した', note: invNote + (noPayment ? '（謝礼0円の請書）' : '') },
+      { type: 'auto', done: !!(invActive && (invActive.status === '確定済み' || invActive.status === '支払い済み')), label: '③ 講師から返信があった（請求書が確定済み）', note: invActive ? '' : '請求書の発行後、講師が内容を確定すると完了になります' },
+      naItem('naLecturer', false, '講師がいない講座（勉強会など）')
     ]);
 
     // 3 募集準備
     groups.push([
-      { type: 'auto', done: !!c.pdfFileId, label: '講座案内PDFを登録した', note: c.pdfFileId ? (c.pdfFileName || '') : '講座進捗ページの「PDF機能」から登録できます' },
+      { type: 'auto', done: !!c.pdfFileId || naCoursePdf, label: '講座案内PDFを登録した', note: c.pdfFileId ? (c.pdfFileName || '') : (naCoursePdf ? '不要（この講座では講座案内PDFはありません）' : '講座進捗ページの「PDF機能」から登録できます') },
+      naItem('naCoursePdf', naCoursePdf, '講座案内PDFはない（不要）'),
       { type: 'auto', done: !!c.formSheetUrl || naForm, label: '参加者募集フォームを登録した', note: c.formSheetUrl ? '' : (naForm ? '不要（この講座では参加者募集フォームを使いません）' : '講座進捗ページの「⑤ 参加者募集フォーム」に回答用スプレッドシートのURLを登録してください') },
       naItem('naForm', naForm, '参加者募集フォームは使わない（不要）')
     ]);
@@ -94,8 +103,12 @@
     var prepItems = checklistItems.map(function (item) {
       return { type: 'check', kind: 'checklist', key: item, done: !!checklist[item], label: item };
     });
-    prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId || naLecturerPdf, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : (naLecturerPdf ? '不要（この講座では講師資料PDFはありません）' : '講座進捗ページの「④ 講師資料PDF」から登録できます') });
-    prepItems.push(naItem('naLecturerPdf', naLecturerPdf, '講師資料PDFはない（不要）'));
+    if (naLecturer) {
+      prepItems.push({ type: 'auto', done: true, label: '講師資料PDF', note: NO_LECT });
+    } else {
+      prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId || naLecturerPdf, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : (naLecturerPdf ? '不要（この講座では講師資料PDFはありません）' : '講座進捗ページの「④ 講師資料PDF」から登録できます') });
+      prepItems.push(naItem('naLecturerPdf', naLecturerPdf, '講師資料PDFはない（不要）'));
+    }
     prepItems.push({ type: 'info', label: '資料庫の資料', note: '理事 ' + (naDirectorMaterials && !mat.director ? '不要' : mat.director + '件') + '／講師 ' + mat.lecturer + '件' });
     prepItems.push(naItem('naDirectorMaterials', naDirectorMaterials, '理事資料はない（不要）'));
     groups.push(prepItems);
@@ -107,7 +120,10 @@
 
     // 8 終了処理(⑥)
     groups.push([
-      { type: 'auto', done: !!(invActive && invActive.status === '支払い済み'), label: '⑥ 講師への支払いが済んだ', note: invActive ? ('請求書のステータス：' + invActive.status) : '請求書が未作成です' },
+      naLecturer
+        ? { type: 'auto', done: true, label: '⑥ 講師への支払い', note: NO_LECT }
+        : { type: 'auto', done: !!(invActive && (invActive.status === '支払い済み' || noPayment)), label: '⑥ 講師への支払いが済んだ',
+            note: noPayment ? '謝礼0円の請書のため、支払いはありません' : (invActive ? ('請求書のステータス：' + invActive.status + (invActive.paymentMethod === '現金' ? '（現金・当日持参）' : '')) : '請求書が未作成です') },
       { type: 'auto', done: !!reportedCourses[c.id], label: '月次報告書に記載した', note: reportedCourses[c.id] ? (jpMonth(reportedCourses[c.id]) + 'の報告書（提出済み）に記載') : '提出済みの月次報告書の「直近の講座開催」に、この講座名で記載されると完了になります' }
     ]);
 
@@ -129,7 +145,7 @@
     var currentIdx = -1;
     for (var i = 0; i < result.length; i++) { if (!result[i].done && !result[i].skipped) { currentIdx = i; break; } }
     return { phases: result, currentIdx: currentIdx, cancelled: cancelled, invActive: invActive,
-      na: { form: naForm, lecturerPdf: naLecturerPdf, directorMaterials: naDirectorMaterials } };
+      na: { form: naForm, lecturerPdf: naLecturerPdf || naLecturer, directorMaterials: naDirectorMaterials, lecturer: naLecturer, coursePdf: naCoursePdf } };
   }
 
   /** 請求書由来のアラート(ダッシュボードと同じ基準) */
@@ -141,7 +157,7 @@
       var du = daysUntil(invActive.eventDate || c.eventDate);
       if (du !== null && du <= Number(alertSettings.unrespondedAlertDays || 14)) alerts.push({ cls: 'chip-red', label: '講師側未返信' });
     }
-    if (invActive.status === '確定済み' && invActive.paymentDueDate) {
+    if (invActive.status === '確定済み' && invActive.paymentDueDate && !invActive.noPayment) {
       var dd = daysUntil(invActive.paymentDueDate);
       if (dd !== null && dd < 0) alerts.push({ cls: 'chip-red', label: '支払期限超過' });
       else if (dd !== null && dd <= Number(alertSettings.paymentWarningDays || 2)) alerts.push({ cls: 'chip-yellow', label: '支払期限接近' });

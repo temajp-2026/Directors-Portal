@@ -397,6 +397,7 @@
           <option value="銀行振込">銀行振込</option>
           <option value="現金">現金</option>
         </select>
+        <div style="font-size:calc(var(--fs-scale,1)*11px); color:var(--gw-text-secondary); margin-top:4px; line-height:1.5;">「現金」は当日持参でお渡しする場合（見学会など）。講師に振込先の入力を求めません。</div>
       </div>
       <div class="field"><label for="f-paymentDueDate">支払予定日</label><input type="date" id="f-paymentDueDate"></div>
     </div>
@@ -407,6 +408,7 @@
       <div class="calc-row"><span>源泉徴収税額（個人・10.21%と仮定）</span><span id="calc-withholding">¥0</span></div>
       <div class="calc-row total"><span>差引お支払総額（振込額）</span><span id="calc-total">¥0</span></div>
     </div>
+    <div id="calc-zero-note" class="hidden" style="margin:8px 0 0; padding:8px 12px; border-radius:8px; background:#e6f4ea; color:#137333; font-size:calc(var(--fs-scale,1)*12px); line-height:1.6;"></div>
 
     <div class="modal-section-title">③ 準備機材等（主催者側で用意）</div>
     <div class="checkbox-grid">
@@ -476,18 +478,37 @@
   // 理事ポータルのトップ画面と同じキーでログイン情報を共有し、
   // 同じタブ内で移動してきた場合は再ログインを求めないようにする。
   var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  var AUTH_MAX_AGE_MS = 6 * 60 * 60 * 1000; // サーバー側のログイン記憶(6時間)と合わせる
+  /* ログイン情報はブラウザ内(localStorage)に6時間だけ保存し、同じブラウザの別のタブ・別の画面でも再ログイン不要にする。
+   * (以前はタブごとの sessionStorage だったため、新しいタブで開いた画面や、一時保存の容量不足のときに
+   *  毎回ログインを求められることがあった。ログアウトすると全タブで消える) */
   function saveAuthToStorage() {
-    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+    var data = JSON.stringify({ idToken: currentIdToken, user: currentUser, savedAt: Date.now() });
+    try { localStorage.setItem(AUTH_STORAGE_KEY, data); }
+    catch (e) {
+      try { // 容量不足のときは、画面表示の一時保存を消してからもう一度保存する
+        for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (k && k !== AUTH_STORAGE_KEY && k.indexOf('riji_dash_cache:') === 0) localStorage.removeItem(k); }
+        localStorage.setItem(AUTH_STORAGE_KEY, data);
+      } catch (e2) {}
+    }
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e3) {}
   }
   function clearAuthStorage() {
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
     try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
   }
   function loadAuthFromStorage() {
+    var raw = null;
+    try { raw = localStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {}
+    if (!raw) { try { raw = sessionStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {} } // 以前の形式(移行用)
+    if (!raw) return null;
     try {
-      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      var d = JSON.parse(raw);
+      if (d && d.savedAt && Date.now() - d.savedAt > AUTH_MAX_AGE_MS) { clearAuthStorage(); return null; }
+      return d;
     } catch (e) { return null; }
   }
+
 
   function $(id) { return document.getElementById(id); }
 
@@ -606,7 +627,22 @@
     $('calc-subtotal').textContent = yen(c.subtotal);
     $('calc-withholding').textContent = yen(c.withholding);
     $('calc-total').textContent = yen(c.total);
+    var travelSeparate = (document.querySelector('input[name="travelHandling"]:checked') || {}).value === '別途支給';
+    var note = $('calc-zero-note');
+    if (note) {
+      note.classList.toggle('hidden', c.fee !== 0);
+      note.textContent = travelSeparate
+        ? '謝礼0円の請書です。講師には内容の確認と署名をお願いします。交通費・宿泊費（別途支給）の実費があれば講師が入力し、その分だけ振込になります。'
+        : '謝礼0円の請書です（支払いなし）。講師には内容の確認と署名だけをお願いし、振込先の入力は求めません。講師が確定した時点で完了になります。';
+    }
   }
+
+  /** 研修形式が「見学」のときは、謝礼を当日持参する運用のため、支払方法の初期値を「現金」にする(新規作成時のみ) */
+  function applyFormatPaymentDefault() {
+    if (editingInvoiceId) return;
+    if ($('f-format').value === '見学') $('f-paymentMethod').value = '現金';
+  }
+
 
   function fillSelect(selectEl, values, emptyLabel) {
     if (!selectEl) return;
@@ -700,7 +736,7 @@
     $('f-endTime').value = c.lecturerEndTime || c.endTime || '';
     applyVenueToForm(c.venue || '');
     $('f-topic').value = c.name || '';
-    if (c.format) $('f-format').value = c.format;
+    if (c.format) { $('f-format').value = c.format; applyFormatPaymentDefault(); }
     $('f-directorName').value = c.directorName || '';
     if (c.department) $('f-department').value = c.department;
     paymentDueDateTouched = false;
@@ -953,6 +989,19 @@
     } catch (e) { fail(); }
   }
 
+  /** 支払いが発生しない請書か(謝礼0円で交通費・宿泊費も無い)。講師が確定した時点で完了とみなす(GASの invoiceHasNoPayment_ と同じ基準) */
+  function invoiceNoPayment(inv) {
+    if (!inv || Math.round(Number(inv.feeExTax) || 0) !== 0) return false;
+    if (inv.travelHandling !== '別途支給') return true;
+    var confirmed = inv.status === '確定済み' || inv.status === '支払い済み';
+    return confirmed && (Number(inv.travelFee) || 0) + (Number(inv.lodgingFee) || 0) === 0;
+  }
+
+  /** 講座準備進捗確認で「講師なし(勉強会など)」に設定されている講座か */
+  function courseHasNoLecturer(c) {
+    try { return !!(JSON.parse((c && c.phaseJson) || '{}') || {}).naLecturer; } catch (e) { return false; }
+  }
+
   function computeInvoiceAlerts(inv) {
     var alerts = [];
     if (inv.status === '取消') return alerts;
@@ -962,7 +1011,7 @@
         alerts.push({ level: 'danger', label: '講師側未返信' });
       }
     }
-    if (inv.status === '確定済み' && inv.paymentDueDate) {
+    if (inv.status === '確定済み' && inv.paymentDueDate && !invoiceNoPayment(inv)) {
       var dd = daysUntil(inv.paymentDueDate);
       if (dd !== null) {
         if (dd < 0) alerts.push({ level: 'danger', label: '支払期限超過' });
@@ -980,6 +1029,7 @@
     var missing = courses.filter(function (c) {
       if (c.status === '中止') return false;
       if (linkedCourseIds[c.id]) return false;
+      if (courseHasNoLecturer(c)) return false; // 講師なし(勉強会など)の講座は請求書が要らない
       var du = daysUntil(c.eventDate);
       return du !== null && du <= appSettings.createAlertDays;
     });
@@ -1051,6 +1101,7 @@
   function invoiceGroupRank(inv) {
     if (inv.status === '取消') return 2;
     if (inv.status === '支払い済み') return 1;
+    if (inv.status === '確定済み' && invoiceNoPayment(inv)) return 1; // 謝礼0円の請書は、講師の確定で完了
     return 0;
   }
   function renderInvoicePager(total, totalPages, startIdx, count) {
@@ -1123,7 +1174,7 @@
       if (invoiceGroupRank(inv) > 0 && (!prev || invoiceGroupRank(prev) === 0)) {
         var dv = document.createElement('tr');
         dv.className = 'group-divider';
-        dv.innerHTML = '<td colspan="7">完了（支払い済み）・取消の請求書</td>';
+        dv.innerHTML = '<td colspan="7">完了（支払い済み・支払いなし）・取消の請求書</td>';
         tbody.appendChild(dv);
       }
       var tr = document.createElement('tr');
@@ -1169,6 +1220,19 @@
       badge.className = 'status-badge status-' + (inv.status || '作成済み');
       badge.textContent = inv.status || '作成済み';
       tdStatus.appendChild(badge);
+      if (inv.status !== '取消' && invoiceNoPayment(inv)) {
+        var np = document.createElement('span');
+        np.className = 'alert-pill';
+        np.style.cssText = 'background:#e6f4ea;color:#137333;';
+        np.textContent = '謝礼なし（支払い不要）';
+        tdStatus.appendChild(np);
+      } else if (inv.status !== '取消' && inv.paymentMethod === '現金') {
+        var cash = document.createElement('span');
+        cash.className = 'alert-pill';
+        cash.style.cssText = 'background:#fef7e0;color:#b06000;';
+        cash.textContent = '現金（当日持参）';
+        tdStatus.appendChild(cash);
+      }
       computeInvoiceAlerts(inv).forEach(function (a) {
         var pill = document.createElement('span');
         pill.className = 'alert-pill ' + a.level;
@@ -1250,6 +1314,7 @@
 
     if (inv.status === '確定済み') {
       var btnPaid = document.createElement('button');
+      if (invoiceNoPayment(inv)) btnPaid.style.display = 'none'; // 謝礼0円の請書は支払いの操作が不要
       btnPaid.type = 'button';
       btnPaid.className = 'btn btn-outline';
       btnPaid.textContent = '支払い済みにする';
@@ -1448,6 +1513,8 @@
     $('btnInvoiceCancel').addEventListener('click', closeModal);
     $('btnInvoiceSave').addEventListener('click', saveInvoice);
     $('f-fee').addEventListener('input', updateModalCalc);
+    $('f-format').addEventListener('change', applyFormatPaymentDefault);
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="travelHandling"]'), function (r) { r.addEventListener('change', updateModalCalc); });
     $('f-venue').addEventListener('change', onVenueSelectChange);
     $('f-course').addEventListener('change', onCourseSelected);
     $('f-eventDate').addEventListener('change', applyDefaultPaymentDueDate);

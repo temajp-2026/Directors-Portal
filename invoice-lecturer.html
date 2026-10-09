@@ -125,6 +125,9 @@
   .signature-fields .sig-line { margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .signature-fields input { width: 190px; display: inline-block; }
 
+  .payment-mode-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 8px; font-size: calc(var(--fs-scale, 1) * 12.5px); line-height: 1.7;
+    background: #e6f4ea; border: 1px solid #b7e1c3; color: #137333; }
+  .payment-mode-note.cash { background: #fef7e0; border-color: #f9d67a; color: #7a4a00; }
   .lecturer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
   .confirmed-note {
@@ -302,6 +305,7 @@
       <div class="section-title">4. 講師記入欄</div>
       <div class="lecturer-box">
         <p class="lecturer-note">以下の項目をご確認のうえ、ご記入・ご選択いただき、最後に「内容を確定する」を押してください。</p>
+        <div id="paymentModeNote" class="payment-mode-note hidden"></div>
 
         <div id="travelFeeSection" class="hidden">
           <p class="lecturer-note">交通費・宿泊費は別途支給となっております。実費をご記入ください（下記のお支払い合計に反映されます）。</p>
@@ -311,7 +315,7 @@
           </div>
         </div>
 
-        <div class="field-grid single">
+        <div class="field-grid single" id="invoiceRegWrap">
           <div class="field">
             <span class="field-label">適格請求書発行事業者（インボイス）登録の有無</span>
             <div class="radio-group">
@@ -352,7 +356,7 @@
           <div class="field full-span"><span class="field-label">メールアドレス</span><input type="text" id="lec-companyEmail" aria-label="メールアドレス"><div class="field-error hidden" id="err-lec-companyEmail">メールアドレスを正しい形式でご入力ください</div></div>
         </div>
 
-        <div class="field-grid" style="margin-top: 14px;">
+        <div class="field-grid" id="bankFields" style="margin-top: 14px;">
           <div class="field"><span class="field-label">振込先金融機関名</span><input type="text" id="lec-bankName" aria-label="金融機関名"><div class="field-error hidden" id="err-lec-bankName">金融機関名をご入力ください</div></div>
           <div class="field"><span class="field-label">支店名</span><input type="text" id="lec-branchName" aria-label="支店名"><div class="field-error hidden" id="err-lec-branchName">支店名をご入力ください</div></div>
           <div class="field">
@@ -449,7 +453,11 @@
   // サーバーから想定外の応答(HTMLのエラーページ等)が返った場合もエラーとして扱う。
   /** 同じブラウザで理事ポータルにログイン中なら、そのログイン情報(請求書アクセスのある理事は振込先を全て確認できる) */
   function portalIdToken() {
-    try { var a = JSON.parse(sessionStorage.getItem('riji_portal_auth') || 'null'); return (a && a.idToken) || null; } catch (e) { return null; }
+    try {
+      var a = JSON.parse(localStorage.getItem('riji_portal_auth') || sessionStorage.getItem('riji_portal_auth') || 'null');
+      if (a && a.savedAt && Date.now() - a.savedAt > 6 * 60 * 60 * 1000) return null;
+      return (a && a.idToken) || null;
+    } catch (e) { return null; }
   }
   function callApi(action, payload) {
     var req = { action: action, payload: payload || {} };
@@ -540,6 +548,40 @@
     $('doc-extrasRow').classList.toggle('hidden', !isTravelSeparate);
     $('doc-extras').textContent = yen(c.extras);
     $('doc-total').textContent = yen(c.total);
+    applyPaymentMode();
+  }
+
+  /**
+   * 支払いの形に応じて、講師に入力してもらう欄を切り替える。
+   * ・謝礼0円で交通費等も無い(支払いなし) … 振込先・インボイスの欄を隠す(請書として確認・署名だけ)
+   * ・支払方法が「現金」(見学会などで当日持参) … 振込先の欄を隠す
+   * ・謝礼0円だが交通費・宿泊費(別途支給)の入力がある … その実費の振込のため振込先を入力してもらう
+   */
+  function paymentMode() {
+    if (!currentInvoice) return { bank: true, invoiceReg: true, note: '', cls: '' };
+    var fee = Math.round(Number(currentInvoice.feeExTax) || 0);
+    var isTravelSeparate = (currentInvoice.travelHandling || '別途支給') === '別途支給';
+    var extras = isTravelSeparate ? (Number($('lec-travelFee').value) || 0) + (Number($('lec-lodgingFee').value) || 0) : 0;
+    var cash = currentInvoice.paymentMethod === '現金';
+    if (fee === 0 && extras === 0) {
+      return { bank: false, invoiceReg: false, cls: '',
+        note: '今回は謝礼のお支払いはありません。講師依頼の内容をご確認のうえ、ご署名をお願いいたします（振込先のご記入は不要です）。' +
+          (isTravelSeparate ? '交通費・宿泊費の実費がある場合は、上の欄にご記入ください。' : '') };
+    }
+    if (cash) {
+      return { bank: false, invoiceReg: fee > 0, cls: 'cash',
+        note: 'お支払いは当日、現金でお渡しします（振込先のご記入は不要です）。' };
+    }
+    return { bank: true, invoiceReg: fee > 0, note: '', cls: '' };
+  }
+  function applyPaymentMode() {
+    var m = paymentMode();
+    $('bankFields').classList.toggle('hidden', !m.bank);
+    $('invoiceRegWrap').classList.toggle('hidden', !m.invoiceReg);
+    if (!m.invoiceReg) $('invoiceNumberWrap').classList.add('hidden'); else toggleInvoiceNumberField();
+    var note = $('paymentModeNote');
+    note.textContent = m.note;
+    note.className = 'payment-mode-note' + (m.cls ? ' ' + m.cls : '') + (m.note ? '' : ' hidden');
   }
 
   function renderInvoice(inv) {
@@ -610,6 +652,7 @@
     $('lec-submitDate').value = inv.submitDate || new Date().toISOString().slice(0, 10);
     $('lec-signerName').value = inv.signerName || '';
 
+    applyPaymentMode();
     applyLockState(inv);
   }
 
@@ -669,7 +712,8 @@
   function validateForm() {
     var ok = true;
 
-    if (!validateInvoiceNumber()) ok = false;
+    var mode = paymentMode();
+    if (mode.invoiceReg && !validateInvoiceNumber()) ok = false;
 
     var withholdingType = radioValue('withholdingType') || '個人';
     if (withholdingType === '個人') {
@@ -686,13 +730,17 @@
       if (!emailOk) ok = false;
     }
 
-    if (!requireField('lec-bankName', '金融機関名をご入力ください')) ok = false;
-    if (!requireField('lec-branchName', '支店名をご入力ください')) ok = false;
-    var accountNumber = $('lec-accountNumber').value.trim();
-    var accountNumberOk = !!accountNumber && DIGITS_RE.test(accountNumber);
-    setFieldError('lec-accountNumber', accountNumberOk ? '' : '口座番号を半角数字でご入力ください');
-    if (!accountNumberOk) ok = false;
-    if (!requireField('lec-accountHolderKana', '口座名義（フリガナ）をご入力ください')) ok = false;
+    if (mode.bank) {
+      if (!requireField('lec-bankName', '金融機関名をご入力ください')) ok = false;
+      if (!requireField('lec-branchName', '支店名をご入力ください')) ok = false;
+      var accountNumber = $('lec-accountNumber').value.trim();
+      var accountNumberOk = !!accountNumber && DIGITS_RE.test(accountNumber);
+      setFieldError('lec-accountNumber', accountNumberOk ? '' : '口座番号を半角数字でご入力ください');
+      if (!accountNumberOk) ok = false;
+      if (!requireField('lec-accountHolderKana', '口座名義（フリガナ）をご入力ください')) ok = false;
+    } else {
+      ['lec-bankName', 'lec-branchName', 'lec-accountNumber', 'lec-accountHolderKana'].forEach(function (id) { setFieldError(id, ''); });
+    }
 
     var photoOk = !!radioValue('photoConsent');
     setGroupError('err-photoConsent', !photoOk);

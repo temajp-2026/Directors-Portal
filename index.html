@@ -1037,18 +1037,37 @@
   // 同じタブ内で他の理事ポータルのツール(請求書管理簿など)に移動しても
   // 再ログインを求めないよう、ログイン情報をタブ内に一時保存する。
   var AUTH_STORAGE_KEY = 'riji_portal_auth';
+  var AUTH_MAX_AGE_MS = 6 * 60 * 60 * 1000; // サーバー側のログイン記憶(6時間)と合わせる
+  /* ログイン情報はブラウザ内(localStorage)に6時間だけ保存し、同じブラウザの別のタブ・別の画面でも再ログイン不要にする。
+   * (以前はタブごとの sessionStorage だったため、新しいタブで開いた画面や、一時保存の容量不足のときに
+   *  毎回ログインを求められることがあった。ログアウトすると全タブで消える) */
   function saveAuthToStorage() {
-    try { sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ idToken: currentIdToken, user: currentUser })); } catch (e) {}
+    var data = JSON.stringify({ idToken: currentIdToken, user: currentUser, savedAt: Date.now() });
+    try { localStorage.setItem(AUTH_STORAGE_KEY, data); }
+    catch (e) {
+      try { // 容量不足のときは、画面表示の一時保存を消してからもう一度保存する
+        for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (k && k !== AUTH_STORAGE_KEY && k.indexOf('riji_dash_cache:') === 0) localStorage.removeItem(k); }
+        localStorage.setItem(AUTH_STORAGE_KEY, data);
+      } catch (e2) {}
+    }
+    try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e3) {}
   }
   function clearAuthStorage() {
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
     try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) {}
   }
   function loadAuthFromStorage() {
+    var raw = null;
+    try { raw = localStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {}
+    if (!raw) { try { raw = sessionStorage.getItem(AUTH_STORAGE_KEY); } catch (e) {} } // 以前の形式(移行用)
+    if (!raw) return null;
     try {
-      var raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      var d = JSON.parse(raw);
+      if (d && d.savedAt && Date.now() - d.savedAt > AUTH_MAX_AGE_MS) { clearAuthStorage(); return null; }
+      return d;
     } catch (e) { return null; }
   }
+
 
   function $(id) { return document.getElementById(id); }
 
@@ -1674,7 +1693,7 @@
         alerts.push({ level: 'danger', label: '講師側未返信' });
       }
     }
-    if (inv.status === '確定済み' && inv.paymentDueDate) {
+    if (inv.status === '確定済み' && inv.paymentDueDate && !invoiceNoPayment(inv)) {
       var dd = daysUntilLocal(inv.paymentDueDate);
       if (dd !== null) {
         if (dd < 0) alerts.push({ level: 'danger', label: '支払期限超過' });
@@ -1706,8 +1725,16 @@
   }
 
   /** 支払い待ち(作成済み・確定済みでまだ支払われていない)請求書を、支払期日の近い順にすべて抽出する */
+  /** 支払いが発生しない請書(謝礼0円で交通費・宿泊費も無い)か。支払い待ちの一覧・振込先一覧には出さない */
+  function invoiceNoPayment(inv) {
+    if (!inv || Math.round(Number(inv.feeExTax) || 0) !== 0) return false;
+    if (inv.travelHandling !== '別途支給') return true;
+    var confirmed = inv.status === '確定済み' || inv.status === '支払い済み';
+    return confirmed && (Number(inv.travelFee) || 0) + (Number(inv.lodgingFee) || 0) === 0;
+  }
+
   function pendingPaymentInvoices(invoices) {
-    var pending = invoices.filter(function (inv) { return inv.status === '作成済み' || inv.status === '確定済み'; });
+    var pending = invoices.filter(function (inv) { return (inv.status === '作成済み' || inv.status === '確定済み') && !invoiceNoPayment(inv); });
     pending.sort(function (a, b) {
       var da = a.paymentDueDate || '9999-99-99';
       var db = b.paymentDueDate || '9999-99-99';
@@ -1741,6 +1768,7 @@
       if (inv.lecturerName) metaParts.push(inv.lecturerName);
       metaParts.push('¥' + total.toLocaleString());
       metaParts.push(inv.status);
+      if (inv.paymentMethod === '現金') metaParts.push('現金（当日持参）');
       metaEl.textContent = metaParts.join('　');
       body.appendChild(nameEl);
       body.appendChild(metaEl);
@@ -1842,11 +1870,11 @@
           ['bp-lecturer', '講師名', inv.lecturerName || '(未確定)'],
           ['bp-due', '支払予定日', inv.paymentDueDate ? jpDate(inv.paymentDueDate) : '未設定'],
           ['bp-amount', '振込金額', '¥' + total.toLocaleString()],
-          ['bp-bank', '金融機関', inv.bankName || '－'],
-          ['bp-branch', '支店名', inv.branchName || '－'],
-          ['bp-type', '口座種別', inv.accountType || '－'],
-          ['bp-number', '口座番号', inv.accountNumber || '－'],
-          ['bp-holder', '口座名義（カナ）', inv.accountHolderKana || '－']
+          ['bp-bank', '金融機関', inv.paymentMethod === '現金' ? '現金（当日持参）' : (inv.bankName || '－')],
+          ['bp-branch', '支店名', inv.paymentMethod === '現金' ? '－' : (inv.branchName || '－')],
+          ['bp-type', '口座種別', inv.paymentMethod === '現金' ? '－' : (inv.accountType || '－')],
+          ['bp-number', '口座番号', inv.paymentMethod === '現金' ? '－' : (inv.accountNumber || '－')],
+          ['bp-holder', '口座名義（カナ）', inv.paymentMethod === '現金' ? '－' : (inv.accountHolderKana || '－')]
         ].forEach(function (f) {
           var cell = document.createElement('div');
           cell.className = 'bp-cell ' + f[0];
