@@ -1,0 +1,6 @@
+# clasp のログイン情報（Googleアカウントの認証情報。絶対にコミットしない）
+.clasprc.json
+# 各自の環境のスクリプトID設定（必要ならコミットしてもよいが、既定では除外）
+gas/.clasp.json
+node_modules/
+.DS_Store
