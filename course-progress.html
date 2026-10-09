@@ -538,6 +538,7 @@
     sessionExpiredNotified = true;
     currentIdToken = null;
     clearAuthStorage();
+    clearPageCache();
     showLoginShell();
     var el = $('loginError');
     if (el) {
@@ -981,29 +982,64 @@
       .sort(function (a, b) { return String(a).localeCompare(String(b), 'ja'); });
   }
 
+  /* ---------- 表示の高速化：前回の読み込み結果を先に表示する ----------
+   * 同じタブで前回取得した結果(sessionStorageに一時保存)があればすぐに表示し、裏で最新データを取得して、
+   * 内容が変わっていれば描き直す(トップ画面と同じ仕組み。キーの頭もそろえ、ログアウト時に一緒に消える)。 */
+  var PAGE_CACHE_PREFIX = 'riji_dash_cache:';
+  function overviewCacheKey() {
+    return PAGE_CACHE_PREFIX + ((currentUser && currentUser.email) || '') + ':course-progress:getPrepOverview';
+  }
+  function clearPageCache() {
+    try {
+      var keys = [];
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (k && k.indexOf(PAGE_CACHE_PREFIX) === 0) keys.push(k);
+      }
+      keys.forEach(function (k) { sessionStorage.removeItem(k); });
+    } catch (e) {}
+  }
+
   function loadOverview() {
+    var cacheKey = overviewCacheKey();
+    var cachedStr = '';
+    try { cachedStr = sessionStorage.getItem(cacheKey) || ''; } catch (e) {}
+    var shownFromCache = false;
+    if (cachedStr) {
+      try { applyOverview(JSON.parse(cachedStr)); shownFromCache = true; } catch (e2) { cachedStr = ''; }
+    }
+    // 前回の内容を表示している間は「最新の情報を取得中…」、初回は「読み込み中…」を出す
+    $('loadingState').textContent = shownFromCache ? '最新の情報を取得中…' : '読み込み中…';
     $('loadingState').classList.remove('hidden');
     return callApi('getPrepOverview').then(function (res) {
       if (!res.ok) {
-        $('loadingState').textContent = errorMessage(res.error);
+        if (shownFromCache) $('loadingState').classList.add('hidden');
+        else $('loadingState').textContent = errorMessage(res.error);
         return;
       }
-      var d = res.data || {};
-      courses = d.courses || [];
-      invoiceStates = d.invoiceStates || {};
-      materialCounts = d.materialCounts || {};
-      reportedCourses = d.reportedCourses || {};
-      checklistItems = d.checklistItems || [];
-      phases = d.phases || [];
-      alertSettings = d.alertSettings || alertSettings;
-      fillFilterSelect($('fDept'), uniqueSorted(courses.map(function (c) { return c.department; })));
-      fillFilterSelect($('fDirector'), uniqueSorted(courses.map(function (c) { return c.directorName; })));
-      renderPhaseLegend();
-      renderAll();
+      var str = JSON.stringify(res.data || {});
+      try { sessionStorage.setItem(cacheKey, str); } catch (e3) { /* 容量不足などは無視(キャッシュ無しで動く) */ }
+      if (str !== cachedStr) applyOverview(res.data || {});
+      $('loadingState').classList.add('hidden');
       loadFormSummaries();
     }).catch(function () {
-      $('loadingState').textContent = 'データの読み込みに失敗しました。時間をおいて再度お試しください。';
+      if (shownFromCache) $('loadingState').classList.add('hidden');
+      else $('loadingState').textContent = 'データの読み込みに失敗しました。時間をおいて再度お試しください。';
     });
+  }
+
+  function applyOverview(d) {
+    courses = d.courses || [];
+    invoiceStates = d.invoiceStates || {};
+    materialCounts = d.materialCounts || {};
+    reportedCourses = d.reportedCourses || {};
+    checklistItems = d.checklistItems || [];
+    phases = d.phases || [];
+    alertSettings = d.alertSettings || alertSettings;
+    fillFilterSelect($('fDept'), uniqueSorted(courses.map(function (c) { return c.department; })));
+    fillFilterSelect($('fDirector'), uniqueSorted(courses.map(function (c) { return c.directorName; })));
+    renderPhaseLegend();
+    renderAll();
   }
 
   /** 参加者募集フォームの申込数を、中止以外・開催60日前以降の講座について取得する。
@@ -1096,6 +1132,7 @@
     currentUser = null;
     currentIdToken = null;
     clearAuthStorage();
+    clearPageCache();
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
     }

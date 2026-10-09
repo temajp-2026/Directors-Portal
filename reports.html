@@ -516,7 +516,7 @@
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     currentMonth = defaultMonth();
     $('monthSelect').value = currentMonth;
-    loadDepartmentsOnce().then(loadMonthData);
+    loadMonthData(loadDepartmentsOnce()); // 担当科の一覧と月のデータを同時に取得する(高速化)
     initPullToRefresh(loadMonthData);
   }
 
@@ -644,10 +644,12 @@
     }).catch(function () {});
   }
 
-  function loadMonthData() {
+  /** waitFor：先に終わっている必要がある読み込み(初回の担当科の一覧)。月のデータの取得と同時に進める */
+  function loadMonthData(waitFor) {
     return Promise.all([
       callApi('listReports', { month: currentMonth }),
-      callApi('getReportSubmissionStatus', { month: currentMonth })
+      callApi('getReportSubmissionStatus', { month: currentMonth }),
+      waitFor
     ]).then(function (results) {
       reports = (results[0] && results[0].ok) ? (results[0].data || []) : [];
       var statusData = (results[1] && results[1].ok) ? results[1].data : null;

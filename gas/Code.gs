@@ -124,6 +124,11 @@
  *   - 保存フォルダ(講座PDF・報告書添付・講座資料庫)の共有を、名簿(AllowedAccounts)の理事だけに変更し、
  *     既存ファイルの「リンクを知っている全員」共有も解除します(syncDriveSharing)。毎日午前4時ごろ自動で名簿と同期します。
  *   - 講師用リンクで、支払い済みから3日経過した請求書は口座番号を下4桁のみ表示し、その他の振込先を伏せます。
+ * ・【2026-10-09(2) 表示の高速化その2】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
+ *   - 月次報告書・資料庫・役員会・SNSの一覧を読むたびに、シートの準備(見出しの確認・列の書式の固定)を
+ *     書き込みで行っていたため、準備進捗・月次報告書・SNSの画面が遅くなっていた。準備は6時間に1回にした
+ *     (保存・削除のときは今まで通り毎回行う)。
+ *   - SNS画面のデータ取得で、講座のサムネイル画像を読まないようにした。
  * ・【2026-10-09 表示の高速化と講座の条件】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - 講座一覧の読み込みで、PDFの読み取り結果(1件最大4万文字)とサムネイル画像の列を読まないようにし、
  *     講座の行を探す処理もID列だけを読むようにした(講座が増えるほど遅くなっていた原因)。
@@ -2244,7 +2249,7 @@ function snsPostRowToObject_(values) {
 }
 
 function listSnsPosts_() {
-  var values = getSnsPostSheet_().getDataRange().getValues();
+  var values = getSheetForRead_(SHEET_SNS_POSTS, SNS_POST_HEADERS, getSnsPostSheet_).getDataRange().getValues();
   var rows = [];
   for (var i = 1; i < values.length; i++) {
     if (!values[i][0]) continue;
@@ -2256,7 +2261,7 @@ function listSnsPosts_() {
 }
 
 function listSnsTemplates_() {
-  var values = getSnsTemplateSheet_().getDataRange().getValues();
+  var values = getSheetForRead_(SHEET_SNS_TEMPLATES, SNS_TEMPLATE_HEADERS, getSnsTemplateSheet_).getDataRange().getValues();
   var map = {};
   for (var i = 1; i < values.length; i++) {
     var type = values[i][0];
@@ -2293,7 +2298,7 @@ function attendanceFromReports_(courses) {
 
 /** SNS画面に必要なデータをまとめて返す(要ログイン)。{ posts, templates, postTypes, attendance } */
 function listSnsData(payload) {
-  var courses = listCourses();
+  var courses = listCourses({ lite: true }); // 出席人数の照合には講座名・開催日・IDだけ使うので、サムネイル画像は読まない
   return {
     posts: listSnsPosts_(),
     templates: listSnsTemplates_(),
@@ -2607,7 +2612,7 @@ function getOrCreateMaterialsFolder_() {
  * payload: { courseId(任意。指定時はその講座の資料のみ), department(任意) }
  */
 function listMaterials(payload) {
-  var sheet = getMaterialSheet();
+  var sheet = getSheetForRead_(SHEET_MATERIALS, MATERIAL_HEADERS, getMaterialSheet);
   var values = sheet.getDataRange().getValues();
   var courseId = payload && payload.courseId;
   var department = payload && payload.department;
@@ -2795,6 +2800,29 @@ function getOrCreateManagedSheet_(name, headers) {
   return sheet;
 }
 
+/**
+ * 【高速化】読み取り専用の処理で使うシートの取得。
+ * シートの準備(見出しの並びの確認・列の書式の固定・既定の行の追加)は、書き込みを伴うため1回あたり0.5〜1秒以上かかる。
+ * 以前は一覧を読むたびに毎回行っていたので、準備が済んだら6時間は省略する(保存・削除などの書き込み処理では今まで通り毎回行う)。
+ * キャッシュの名前に見出しの内容を含めるので、コードで列を追加した場合は自動で準備し直す。
+ */
+var SHEET_SETUP_CACHE_SECONDS = 21600; // 6時間
+function getSheetForRead_(name, headers, setupFn) {
+  var cache = null, key = '';
+  try {
+    cache = CacheService.getScriptCache();
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, name + '\n' + headers.join('\t'), Utilities.Charset.UTF_8);
+    key = 'setup_' + Utilities.base64EncodeWebSafe(digest).replace(/=+$/, '');
+  } catch (e) { cache = null; }
+  if (cache && cache.get(key)) {
+    var existing = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    if (existing) return existing;
+  }
+  var sheet = setupFn();
+  if (cache) { try { cache.put(key, '1', SHEET_SETUP_CACHE_SECONDS); } catch (e2) {} }
+  return sheet;
+}
+
 function getReportSheet() {
   var sheet = getOrCreateManagedSheet_(SHEET_REPORTS, REPORT_HEADERS);
   ensureColumnCapacity(sheet, REPORT_HEADERS.length);
@@ -2865,7 +2893,7 @@ function findReportRowIndexById_(sheet, id) {
 
 /** 報告書一覧を取得する。payload.month(YYYY-MM)を指定すればその月度のみ、省略すれば全件。 */
 function listReports(payload) {
-  var sheet = getReportSheet();
+  var sheet = getSheetForRead_(SHEET_REPORTS, REPORT_HEADERS, getReportSheet);
   var values = sheet.getDataRange().getValues();
   var rows = [];
   for (var i = 1; i < values.length; i++) {
@@ -3369,7 +3397,7 @@ function getBoardMeetingSheet() {
 
 /** 役員会の開催日を、登録済みの全年度分まとめて一覧取得する(報告書の提出期限計算に使用) */
 function listBoardMeetings() {
-  var sheet = getBoardMeetingSheet();
+  var sheet = getSheetForRead_(SHEET_BOARD_MEETINGS, BOARD_MEETING_HEADERS, getBoardMeetingSheet);
   var values = sheet.getDataRange().getValues();
   var rows = [];
   for (var i = 1; i < values.length; i++) {
@@ -3384,7 +3412,7 @@ function listBoardMeetings() {
 function getBoardMeetingsForYear(payload) {
   var fiscalYear = String((payload && payload.fiscalYear) || '').trim();
   if (!fiscalYear) throw new Error('fiscal_year_required');
-  var sheet = getBoardMeetingSheet();
+  var sheet = getSheetForRead_(SHEET_BOARD_MEETINGS, BOARD_MEETING_HEADERS, getBoardMeetingSheet);
   var values = sheet.getDataRange().getValues();
   var byMonth = {};
   for (var i = 1; i < values.length; i++) {
