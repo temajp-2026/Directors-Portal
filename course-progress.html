@@ -435,6 +435,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="prep-phases.js"></script>
+<script src="portal-nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -685,7 +686,7 @@
     }
     setView('pipeline');
     var idx = phases.map(function (p) { return p.key; }).indexOf(phaseKey);
-    openPhase[courseId] = idx;
+    if (idx >= 0) openPhase[courseId] = idx;
     renderAll();
     var card = $('card-' + courseId);
     if (card) {
@@ -748,6 +749,7 @@
       '<div style="min-width:0; flex:1 1 280px;">' +
         '<div class="cc-title">' + escapeHtml(c.name || '(名称未設定)') + '</div>' +
         '<div class="cc-meta">' + metaParts.join('　／　') + '</div>' +
+        (window.PortalNav ? PortalNav.courseLinksHtml(c.id, { exclude: ['course', 'progress'] }) : '') +
       '</div>' +
       '<div class="cc-side">' + statusChipHtml(c) + alerts + formChipHtml(c) + materialChipHtml(c) +
         '<a class="cc-link" href="index.html?openCourse=' + encodeURIComponent(c.id) + '">講座進捗を開く →</a>' +
@@ -1031,7 +1033,18 @@
     $('loginShell').classList.add('hidden');
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
-    loadOverview();
+    loadOverview().then(focusCourseFromQuery);
+  }
+
+  /** 他の画面から course-progress.html?course=<講座ID> で開かれた場合、その講座のカードまで移動する(最初の1回だけ) */
+  var courseQueryHandled = false;
+  function focusCourseFromQuery() {
+    if (courseQueryHandled) return;
+    courseQueryHandled = true;
+    var id = window.PortalNav ? PortalNav.courseParam() : '';
+    if (!id) return;
+    if (courses.some(function (c) { return c.id === id; })) focusCourse(id, null);
+    else showToast('指定された講座が見つかりませんでした');
   }
 
   function handleCredentialResponse(response) {

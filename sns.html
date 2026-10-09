@@ -210,6 +210,7 @@
 
   .view-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
   .view-tab { font-family: inherit; font-size: calc(var(--fs-scale, 1) * 12.5px); font-weight: 500; padding: 7px 16px; border-radius: 18px; border: 1px solid var(--gw-border); background: var(--gw-surface); color: var(--gw-text-secondary); cursor: pointer; }
+  tr.row-flash td { background: #fdf0f7 !important; transition: background-color .3s ease; }
   .view-tab.active { background: var(--gw-blue); border-color: var(--gw-blue); color: #fff; }
   .filter-row { grid-template-columns: 220px minmax(0, 1fr); }
   @media (max-width: 560px) { .filter-row { grid-template-columns: minmax(0, 1fr); } }
@@ -484,6 +485,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="portal-nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1082,6 +1084,7 @@
     $('courseTable').classList.toggle('hidden', !list.length);
     list.forEach(function (c) {
       var tr = document.createElement('tr');
+      tr.id = 'crow-' + c.id;
       tr.innerHTML =
         '<td class="cell-title" data-label="講座名"><div>' + escapeHtml(c.name || '(名称未設定)') + '</div></td>' +
         '<td class="cell-date" data-label="開催日"><div>' + escapeHtml(c.eventDate ? jpDate(c.eventDate, true) : '未定') + '</div></td>';
@@ -1429,7 +1432,29 @@
     $('loginShell').classList.add('hidden');
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
-    loadData();
+    loadData().then(focusCourseFromQuery);
+  }
+
+  /** 他の画面から sns.html?course=<講座ID> で開かれた場合、講座別の表でその講座の行まで移動する(最初の1回だけ) */
+  var courseQueryHandled = false;
+  function focusCourseFromQuery() {
+    if (courseQueryHandled) return;
+    courseQueryHandled = true;
+    var id = window.PortalNav ? PortalNav.courseParam() : '';
+    if (!id) return;
+    var c = courses.filter(function (x) { return x.id === id; })[0];
+    if (!c) { showToast('指定された講座が見つかりませんでした'); return; }
+    if (c.status === '中止') { showToast('中止の講座は講座別の表に表示されません'); return; }
+    currentView = 'course';
+    Array.prototype.forEach.call(document.querySelectorAll('.view-tab'), function (x) { x.classList.toggle('active', x.getAttribute('data-view') === 'course'); });
+    if (!coursesForTable().some(function (x) { return x.id === id; })) { $('fPeriod').value = 'all'; $('fKeyword').value = ''; }
+    renderAll();
+    var row = $('crow-' + id);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('row-flash');
+      setTimeout(function () { row.classList.remove('row-flash'); }, 1800);
+    }
   }
   function handleCredentialResponse(response) {
     sessionExpiredNotified = false;

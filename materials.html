@@ -279,6 +279,7 @@
   <div class="modal-panel">
     <div class="modal-title" id="mmTitle">講座名</div>
     <div class="modal-sub" id="mmSub"></div>
+    <div id="mmCourseLinks" style="margin:-4px 0 12px;"></div>
 
     <div class="modal-section-title">講師用リンク</div>
     <div class="rc-hint">このリンクを講師の方に送ると、Googleログインなしで資料を提出していただけます。理事がアップロードした資料は講師側の画面には表示されません。</div>
@@ -313,6 +314,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="portal-nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -500,7 +502,16 @@
     $('loginShell').classList.add('hidden');
     $('appShell').classList.remove('hidden');
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
-    loadMasterData();
+    loadMasterData().then(openCourseFromQuery);
+  }
+
+  /** 他の画面から materials.html?course=<講座ID> で開かれた場合、その講座の資料画面を開く(最初の1回だけ) */
+  var courseQueryHandled = false;
+  function openCourseFromQuery() {
+    if (courseQueryHandled) return;
+    courseQueryHandled = true;
+    var id = window.PortalNav ? PortalNav.courseParam() : '';
+    if (id) openMaterialsModal(id);
   }
 
   function handleCredentialResponse(response) {
@@ -652,6 +663,7 @@
     subParts.push('開催日：' + (course.eventDate ? jpDate(course.eventDate, true) : '未定'));
     if (course.department) subParts.push('担当科：' + course.department);
     $('mmSub').textContent = subParts.join('　／　');
+    $('mmCourseLinks').innerHTML = window.PortalNav ? PortalNav.courseLinksHtml(courseId, { exclude: ['materials'] }) : '';
     $('mmLecturerLink').value = lecturerLinkFor(courseId);
     $('m-note').value = '';
     fillSelect($('m-category'), categoryOptions(), null);

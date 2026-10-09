@@ -828,6 +828,7 @@
       <button type="button" class="btn btn-outline" id="btnPpPdf">PDF機能</button>
       <button type="button" class="btn btn-outline" id="btnPpPrompt">プロンプト書き出し</button>
     </div>
+    <div id="ppCourseLinks" style="margin:-4px 0 14px;"></div>
 
     <div class="field">
       <label>① 講師打ち合わせ</label>
@@ -992,6 +993,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="prep-phases.js"></script>
+<script src="portal-nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -2230,6 +2232,8 @@
     badge.textContent = course.status || '準備中';
     badge.className = 'status-badge status-' + (course.status || '準備中');
 
+    // この講座の他の画面へのリンク(入力途中の内容が消えないよう、新しいタブで開く)
+    $('ppCourseLinks').innerHTML = window.PortalNav ? PortalNav.courseLinksHtml(course.id, { exclude: ['course'], newTab: true, label: 'この講座の他の画面（新しいタブで開きます）：' }) : '';
     $('pp-meetingDone').checked = !!course.lecturerMeetingDone;
     $('pp-meetingNote').value = course.lecturerMeetingNote || '';
     renderPrepInvoiceSummary(course);

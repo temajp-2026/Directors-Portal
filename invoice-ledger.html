@@ -453,6 +453,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="portal-nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -830,7 +831,14 @@
       if (inv) { openInvoiceModal(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
       return;
     }
-    var newForCourseId = params.get('newForCourse');
+    // ?course=<講座ID>：その講座の請求書(取消以外で最新のもの)があれば開き、無ければ新規作成を開く
+    var courseParam = params.get('course');
+    if (courseParam) {
+      var mine = invoices.filter(function (i) { return i.courseId === courseParam && i.status !== '取消'; })
+        .sort(function (a, b) { return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)); });
+      if (mine.length) { openInvoiceModal(mine[0]); return; }
+    }
+    var newForCourseId = params.get('newForCourse') || courseParam;
     if (newForCourseId) {
       var c = courses.filter(function (x) { return x.id === newForCourseId; })[0];
       if (!c) { showToast('指定された講座が見つかりませんでした'); return; }
