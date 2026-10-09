@@ -132,6 +132,7 @@
   table.list-table th { background: var(--gw-bg); color: var(--gw-text); font-weight: 500; font-size: calc(var(--fs-scale, 1) * 12px); }
   table.list-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
   .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  tr.row-focus td { background: var(--gw-blue-tint, #e8f0fe) !important; transition: background-color .3s ease; }
   .invoice-actions-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px; }
   .invoice-actions-list .btn { width: 100%; text-align: center; }
 
@@ -853,10 +854,20 @@
 
   /**
    * ダッシュボード等から以下のクエリパラメータでリンクされた場合、該当の操作を自動で行う(初回のみ)。
-   * ・?open=<請求書ID>         … 該当の請求書を編集モーダルで開く
+   * ・?open=<請求書ID>         … 該当の請求書を編集モーダルで開く(確定済み・支払い済みは一覧のその行を示す)
    * ・?newForCourse=<講座ID>   … 指定した講座の内容を自動入力した状態で、新規作成モーダルを開く
    *                              (講座一覧の「準備進捗」画面の「請求書を作成する」ボタンから遷移)
    */
+  /** 他の画面のリンクから請求書を開く。確定済み・支払い済みは、うっかり書き換えないよう編集画面は開かず、一覧のその行を示す */
+  function openOrFocusInvoice(inv) {
+    if (inv.status === '確定済み' || inv.status === '支払い済み') {
+      focusInvoiceRow(inv);
+      showToast(inv.status + 'の請求書です。内容は「確認・印刷」、支払いや差し戻しは「その他の操作」から');
+    } else {
+      openInvoiceModal(inv);
+    }
+  }
+
   function openInvoiceFromQueryParam() {
     if (queryOpenHandled) return;
     queryOpenHandled = true;
@@ -864,15 +875,15 @@
     var openId = params.get('open');
     if (openId) {
       var inv = invoices.filter(function (i) { return i.id === openId; })[0];
-      if (inv) { openInvoiceModal(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
+      if (inv) { openOrFocusInvoice(inv); } else { showToast('指定された請求書が見つかりませんでした'); }
       return;
     }
-    // ?course=<講座ID>：その講座の請求書(取消以外で最新のもの)があれば開き、無ければ新規作成を開く
+    // ?course=<講座ID>：その講座の請求書(取消以外で最新のもの)があれば開き(確定済み・支払い済みは一覧のその行を示す)、無ければ新規作成を開く
     var courseParam = params.get('course');
     if (courseParam) {
       var mine = invoices.filter(function (i) { return i.courseId === courseParam && i.status !== '取消'; })
         .sort(function (a, b) { return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)); });
-      if (mine.length) { openInvoiceModal(mine[0]); return; }
+      if (mine.length) { openOrFocusInvoice(mine[0]); return; }
     }
     var newForCourseId = params.get('newForCourse') || courseParam;
     if (newForCourseId) {
@@ -1143,6 +1154,26 @@
     if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  /** 一覧の並び順：未完了(作成済み・確定済み)を上に、完了(支払い済み)・取消を下にまとめる。同じ区分の中は作成の新しい順のまま。 */
+  function sortedInvoicesForList() {
+    return invoices.map(function (inv, i) { return { inv: inv, i: i }; }).sort(function (a, b) {
+      return (invoiceGroupRank(a.inv) - invoiceGroupRank(b.inv)) || (a.i - b.i);
+    }).map(function (x) { return x.inv; });
+  }
+
+  /** 一覧の中でその請求書の行があるページを表示し、行までスクロールして色を付ける(講座リンクから確定済みの請求書を開いた場合) */
+  function focusInvoiceRow(inv) {
+    var idx = sortedInvoicesForList().indexOf(inv);
+    if (idx === -1) return;
+    invoicePage = Math.floor(idx / INVOICE_PAGE_SIZE) + 1;
+    renderList();
+    var row = $('inv-row-' + inv.id);
+    if (!row) return;
+    row.classList.add('row-focus');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(function () { row.classList.remove('row-focus'); }, 4000);
+  }
+
   function renderList() {
     renderMissingInvoiceBanner();
 
@@ -1157,10 +1188,7 @@
     $('emptyState').classList.add('hidden');
     $('invoiceTable').classList.remove('hidden');
 
-    // 未完了(作成済み・確定済み)を上に、完了(支払い済み)・取消を下にまとめる。同じ区分の中は作成の新しい順のまま。
-    var sorted = invoices.map(function (inv, i) { return { inv: inv, i: i }; }).sort(function (a, b) {
-      return (invoiceGroupRank(a.inv) - invoiceGroupRank(b.inv)) || (a.i - b.i);
-    }).map(function (x) { return x.inv; });
+    var sorted = sortedInvoicesForList();
     var totalPages = Math.max(1, Math.ceil(sorted.length / INVOICE_PAGE_SIZE));
     if (invoicePage > totalPages) invoicePage = totalPages;
     if (invoicePage < 1) invoicePage = 1;
@@ -1178,6 +1206,7 @@
         tbody.appendChild(dv);
       }
       var tr = document.createElement('tr');
+      tr.id = 'inv-row-' + inv.id;
       if (inv.status === '取消') tr.className = 'voided';
 
       var tdTopic = document.createElement('td');
