@@ -124,6 +124,10 @@
  *   - 保存フォルダ(講座PDF・報告書添付・講座資料庫)の共有を、名簿(AllowedAccounts)の理事だけに変更し、
  *     既存ファイルの「リンクを知っている全員」共有も解除します(syncDriveSharing)。毎日午前4時ごろ自動で名簿と同期します。
  *   - 講師用リンクで、支払い済みから3日経過した請求書は口座番号を下4桁のみ表示し、その他の振込先を伏せます。
+ * ・【2026-11-14 お知らせ・開催準備】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
+ *   - トップ画面のお知らせ(tema.jp)：画面から tema.jp の公開の一覧(WordPress の REST API)を直接読むようにした。
+ *     サーバー側も、まず同じ一覧を読み、だめならトップページから読み取る(今まで通り)。
+ *   - 開催準備：必要な備品のチェックは、スタッフへの共有用とし、完了の条件(④講座準備資料作成済み)から外した。
  * ・【2026-11-13 講師資料の形式】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - 講座進捗ページの「④ 講師資料PDF」に、PDFのほか PowerPoint(.ppt / .pptx)と HTML(.html / .htm)も
  *     アップロードできるようにした。形式はファイル名の拡張子で判断し、それ以外の形式は受け付けない。
@@ -1585,7 +1589,8 @@ function listAnnouncements(payload) {
         if (parsed && parsed.length) return parsed;
       } catch (e2) { /* キャッシュが壊れていれば再取得 */ }
     }
-    var items = fetchAnnouncementsFromSite_(); // 取得失敗時はnull
+    // 2026-11-14：まず tema.jp の公開の一覧(WordPress の REST API)を読み、だめならトップページから読み取る
+    var items = fetchAnnouncementsFromRest_() || fetchAnnouncementsFromSite_(); // 取得失敗時はnull
     if (items && items.length) {
       try { cache.put(ANNOUNCEMENTS_CACHE_KEY, JSON.stringify(items), ANNOUNCEMENTS_CACHE_SECONDS); } catch (e3) {}
       return items;
@@ -1598,6 +1603,26 @@ function listAnnouncements(payload) {
 
 function announcementsFallback_() {
   return [{ title: '最新のお知らせを tema.jp で見る', url: ANNOUNCEMENTS_MORE_URL }];
+}
+
+/** tema.jp の「最新の講座」の一覧(REST API。トップページの「最新情報」欄と同じ並び)から6件を読む。失敗時はnull */
+function fetchAnnouncementsFromRest_() {
+  try {
+    var res = UrlFetchApp.fetch('https://tema.jp/wp-json/wp/v2/new-courses?per_page=6&_fields=link,title', {
+      muteHttpExceptions: true, followRedirects: true,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'Accept': 'application/json' }
+    });
+    if (res.getResponseCode() !== 200) return null;
+    var list = JSON.parse(res.getContentText());
+    var items = (Array.isArray(list) ? list : []).map(function (p) {
+      var title = decodeHtmlEntities_(stripHtmlTags_(String(p && p.title && p.title.rendered || ''))).trim();
+      var link = String(p && p.link || '');
+      return (title && /^https:\/\/tema\.jp\//.test(link)) ? { title: title, url: link } : null;
+    }).filter(function (x) { return x; });
+    return items.length ? items : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 /** tema.jpのHTMLを取得し、お知らせ記事(/new-courses/)へのリンクを抽出する。失敗時はnullを返す。 */
@@ -2701,11 +2726,11 @@ function updatePrepItem(payload, user) {
     throw new Error('invalid_prep_item');
   }
 
-  var items = options['講座準備チェック項目'] || [];
-  var allChecked = items.length > 0 && items.every(function (k) { return !!checklistState[k]; });
+  // 2026-11-14 仕様変更：備品のチェックは、必要な備品をスタッフに共有するためのもので、完了の条件に含めない。
+  // ④講座準備資料作成済みは、講師資料のアップロード(または「不要」・講師なし)だけで決める。
   var phaseNow = kind === 'phase' ? phaseState : safeParseJson(course.phaseJson);
   var naPdf = !!(phaseNow.naLecturerPdf || phaseNow.naLecturer);
-  sheet.getRange(rowIndex, courseCol('prepMaterialsDone')).setValue(safeCell_(allChecked && (!!course.lecturerMaterialFileId || naPdf)));
+  sheet.getRange(rowIndex, courseCol('prepMaterialsDone')).setValue(safeCell_(!!course.lecturerMaterialFileId || naPdf));
   sheet.getRange(rowIndex, courseCol('更新日時')).setValue(safeCell_(new Date()));
   appendLog(user.email, 'updatePrepItem', (course.name || '') + '：' + kind + (key ? '/' + key : '') + '=' + (on ? 'ON' : 'OFF'));
   return courseRowToObject(sheet.getRange(rowIndex, 1, 1, COURSE_HEADERS.length).getValues()[0]);

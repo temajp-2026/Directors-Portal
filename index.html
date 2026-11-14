@@ -1494,15 +1494,55 @@
     list.appendChild(chipsWrap);
   }
 
-  /** ダッシュボードの「お知らせ（tema.jp）」欄を読み込む */
+  /**
+   * ダッシュボードの「お知らせ（tema.jp）」欄を読み込む。
+   * 2026-11-14：サーバー(GAS)から tema.jp を読むと失敗して「最新のお知らせを tema.jp で見る」だけになることがあるため、
+   * 画面から tema.jp の公開の一覧(WordPress の「最新の講座」。トップページの「最新情報」欄と同じ並び)を直接読む。
+   * 前回の結果をこの端末に残しておき、開いたらすぐ出す。直接読めなかったときだけ、今までどおりサーバー経由で読む。
+   */
+  var ANNOUNCEMENTS_API = 'https://tema.jp/wp-json/wp/v2/new-courses?per_page=6&_fields=link,title';
+  var ANNOUNCEMENTS_LOCAL_KEY = 'temaAnnouncementsCache';
   function loadAnnouncements() {
-    cachedApi('listAnnouncements', null, function (res) {
+    var shown = false;
+    try {
+      var saved = JSON.parse(localStorage.getItem(ANNOUNCEMENTS_LOCAL_KEY) || 'null');
+      if (saved && saved.items && saved.items.length) { $('announcementLoading').classList.add('hidden'); renderAnnouncements(saved.items); shown = true; }
+    } catch (e) { /* 保存がなければ読み込みを待つ */ }
+    fetchAnnouncementsDirect_().then(function (items) {
       $('announcementLoading').classList.add('hidden');
-      if (!res.ok) { return; }
-      renderAnnouncements(res.data || []);
+      renderAnnouncements(items);
+      try { localStorage.setItem(ANNOUNCEMENTS_LOCAL_KEY, JSON.stringify({ items: items, savedAt: Date.now() })); } catch (e) {}
     }).catch(function () {
-      $('announcementLoading').classList.add('hidden');
+      if (shown) return; // 前回の結果を出せていれば、それを残す
+      cachedApi('listAnnouncements', null, function (res) {
+        $('announcementLoading').classList.add('hidden');
+        if (!res.ok) { return; }
+        renderAnnouncements(res.data || []);
+      }).catch(function () {
+        $('announcementLoading').classList.add('hidden');
+      });
     });
+  }
+
+  /** tema.jp の公開の一覧を直接読む(10秒で打ち切り)。記事のタイトルとリンクだけを使う */
+  function fetchAnnouncementsDirect_() {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
+    return fetch(ANNOUNCEMENTS_API, { credentials: 'omit', signal: ctrl ? ctrl.signal : undefined }).then(function (r) {
+      if (!r.ok) throw new Error('http_' + r.status);
+      return r.json();
+    }).then(function (list) {
+      if (timer) clearTimeout(timer);
+      var items = (Array.isArray(list) ? list : []).map(function (p) {
+        // タイトルは HTML の文字参照(&#8211; など)を含むので、文字に戻す(タグは使わず文字だけにする)
+        var doc = new DOMParser().parseFromString(String(p && p.title && p.title.rendered || ''), 'text/html');
+        var title = (doc.body.textContent || '').trim();
+        var link = String(p && p.link || '');
+        return (title && /^https:\/\/tema\.jp\//.test(link)) ? { title: title, url: link } : null;
+      }).filter(Boolean);
+      if (!items.length) throw new Error('empty');
+      return items;
+    }, function (e) { if (timer) clearTimeout(timer); throw e; });
   }
 
   function renderAnnouncements(items) {
@@ -2426,6 +2466,11 @@
     try { return !!(JSON.parse(course.phaseJson || '{}') || {}).naLecturerPdf; } catch (e) { return false; }
   }
 
+  /** 講座準備進捗確認で「講師なし」に設定されているか */
+  function naLecturerOf_(course) {
+    try { return !!(JSON.parse(course.phaseJson || '{}') || {}).naLecturer; } catch (e) { return false; }
+  }
+
   function renderPrepMaterialSection(course) {
     var has = !!course.lecturerMaterialFileId;
     $('ppMaterialNone').classList.toggle('hidden', has);
@@ -2660,9 +2705,9 @@
       lecturerMeetingDone: $('pp-meetingDone').checked,
       lecturerMeetingNote: $('pp-meetingNote').value,
       prepChecklistJson: JSON.stringify(checklist),
-      // ダッシュボードの「④講座準備資料作成済み」は、③の備品チェックが全て完了 かつ
-      // ④の講師資料PDFがアップロード済みの、両方を満たしたときだけ完了扱いにする。
-      prepMaterialsDone: items.length > 0 && doneCount === items.length && !!(activeCourse && (activeCourse.lecturerMaterialFileId || naLecturerPdfOf(activeCourse))),
+      // 「④講座準備資料作成済み」は、④の講師資料がアップロード済み(または「不要」・講師なし)なら完了扱いにする。
+      // ③の備品チェックは、必要な備品をスタッフに共有するためのもので、完了の条件には含めない(2026-11-14 仕様変更)。
+      prepMaterialsDone: !!(activeCourse && (activeCourse.lecturerMaterialFileId || naLecturerPdfOf(activeCourse) || naLecturerOf_(activeCourse))),
       formSheetUrl: $('pp-formSheetUrl').value.trim(),
       formVenueColumnOverride: $('pp-formVenueColumnOverride').value.trim()
     };

@@ -100,8 +100,11 @@
     ]);
 
     // 6 開催準備(④)
-    var prepItems = checklistItems.map(function (item) {
-      return { type: 'check', kind: 'checklist', key: item, done: !!checklist[item], label: item };
+    // 必要な備品のチェック欄は、ほかのスタッフに必要な備品を共有するためのもの(2026-11-14 仕様変更)。
+    // チェックしなくても段階は完了になる(shareOnly：完了の判定に含めない)。完了の判定は講師資料(または「不要」)で行う。
+    var prepItems = checklistItems.length ? [{ type: 'info', label: '必要な備品（スタッフへの共有用）', note: 'チェックは準備の目印です。チェックしなくても、この段階は完了になります' }] : [];
+    checklistItems.forEach(function (item) {
+      prepItems.push({ type: 'check', kind: 'checklist', key: item, shareOnly: true, done: !!checklist[item], label: item });
     });
     if (naLecturer) {
       prepItems.push({ type: 'auto', done: true, label: '講師資料PDF', note: NO_LECT });
@@ -133,7 +136,7 @@
     var eventIdx = phases.map(function (p) { return p.key; }).indexOf('event');
     var result = phases.map(function (ph, i) {
       var items = groups[i] || [];
-      var judged = items.filter(function (it) { return it.type !== 'info' && !it.optional; });
+      var judged = items.filter(function (it) { return it.type !== 'info' && !it.optional && !it.shareOnly; });
       var done = judged.length > 0 && judged.every(function (it) { return it.done; });
       var target = eventDate ? addDays(eventDate, ph.offsetDays) : null;
       // 開催済みの講座では、開催より前の段階が未チェックでも今から対応する意味はないため、
