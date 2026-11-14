@@ -849,7 +849,7 @@
     </div>
 
     <div class="field">
-      <label>④ 講師資料PDF</label>
+      <label>④ 講師資料PDF（PowerPoint・HTMLも可）</label>
       <div id="ppMaterialNone" class="pdf-none hidden">まだアップロードされていません。</div>
       <div id="ppMaterialCurrent" class="pdf-current hidden">
         <div class="pdf-current-info">
@@ -860,7 +860,12 @@
           </div>
         </div>
       </div>
-      <input type="file" id="pp-materialFile" accept="application/pdf" style="margin-top:8px;">
+      <input type="file" id="pp-materialFile" accept=".pdf,.ppt,.pptx,.html,.htm" style="margin-top:8px;">
+      <div id="ppMaterialFolderRow" class="hidden" style="margin-top:8px;">
+        <button type="button" class="btn btn-outline btn-small" id="btnPpMaterialFolder">フォルダごとアップロード</button>
+        <input type="file" id="pp-materialFolder" webkitdirectory multiple class="hidden">
+        <div class="pdf-none" style="margin-top:4px;">HTMLのスライドと画像のように、ファイルが分かれている資料はフォルダごと選んでください（パソコンのみ）。</div>
+      </div>
       <div id="ppMaterialUploadStatus" class="pdf-upload-status hidden"></div>
     </div>
 
@@ -2433,11 +2438,24 @@
     $('ppMaterialUploadStatus').classList.add('hidden');
   }
 
+  /** 講師資料としてアップロードできる形式(拡張子 → ファイルの種類)。サーバー側(gas/Code.gs)の一覧と合わせる */
+  var LECTURER_MATERIAL_TYPES = {
+    pdf: 'application/pdf',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    html: 'text/html',
+    htm: 'text/html'
+  };
+
   function uploadLecturerMaterial_() {
     var fileInput = $('pp-materialFile');
     var file = fileInput.files && fileInput.files[0];
     if (!file || !activeCourse) return;
-    if (file.size > 15 * 1024 * 1024) { showToast('PDFのサイズが大きすぎます（15MBまで）'); fileInput.value = ''; return; }
+    // 講師資料は PDF・PowerPoint・HTML を受け付ける(2026-11-13)。形式は拡張子で判断し、サーバー側でも確かめる
+    var ext = (String(file.name).match(/\.([A-Za-z0-9]+)$/) || [])[1];
+    var mime = LECTURER_MATERIAL_TYPES[String(ext || '').toLowerCase()];
+    if (!mime) { showToast('PDF・PowerPoint（.ppt / .pptx）・HTML（.html / .htm）のファイルを選んでください'); fileInput.value = ''; return; }
+    if (file.size > 15 * 1024 * 1024) { showToast('ファイルのサイズが大きすぎます（15MBまで）'); fileInput.value = ''; return; }
 
     var statusEl = $('ppMaterialUploadStatus');
     statusEl.textContent = 'アップロード中…';
@@ -2447,10 +2465,13 @@
     reader.onload = function () {
       var base64 = String(reader.result).split(',')[1] || '';
       callApi('uploadLecturerMaterial', {
-        courseId: activeCourse.id, fileName: file.name, mimeType: file.type || 'application/pdf', base64Data: base64
+        courseId: activeCourse.id, fileName: file.name, mimeType: mime, base64Data: base64
       }).then(function (res) {
-        if (!res.ok) { showToast('アップロードに失敗しました：' + res.error); statusEl.classList.add('hidden'); return; }
-        showToast('講師資料PDFをアップロードしました');
+        if (!res.ok) {
+          showToast(res.error === 'unsupported_file_type' ? 'この形式のファイルはアップロードできません（PDF・PowerPoint・HTMLのみ）' : 'アップロードに失敗しました：' + res.error);
+          statusEl.classList.add('hidden'); return;
+        }
+        showToast('講師資料をアップロードしました');
         return callApi('listCourses');
       }).then(function (res) {
         if (res && res.ok) {
@@ -2467,6 +2488,90 @@
     };
     reader.onerror = function () { showToast('ファイルの読み込みに失敗しました'); statusEl.classList.add('hidden'); };
     reader.readAsDataURL(file);
+  }
+
+  /** フォルダごとアップロードできる形式。サーバー側(gas/Code.gs の LECTURER_FOLDER_TYPES)と合わせる */
+  var LECTURER_FOLDER_EXTS = ['pdf', 'ppt', 'pptx', 'html', 'htm', 'css', 'js', 'json', 'txt', 'csv', 'md', 'png', 'jpg', 'jpeg', 'gif', 'svg',
+    'webp', 'ico', 'woff', 'woff2', 'ttf', 'otf', 'mp3', 'm4a', 'wav', 'mp4', 'webm'];
+  var LECTURER_FOLDER_MAX_FILES = 200, LECTURER_FOLDER_FILE_MAX = 15 * 1024 * 1024, LECTURER_FOLDER_TOTAL_MAX = 30 * 1024 * 1024;
+
+  function readFileBase64_(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1] || ''); };
+      r.onerror = function () { reject(new Error('read_failed')); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  /** フォルダごとアップロード：作業用のフォルダを作り、1ファイルずつ送り、最後に数を確かめて差し替える */
+  function uploadLecturerMaterialFolder_() {
+    var input = $('pp-materialFolder');
+    var course = activeCourse;
+    // 隠しファイル(.DS_Store など)と、Windows・Mac が自動で作るファイルは送らない
+    var files = Array.prototype.slice.call(input.files || []).filter(function (f) {
+      var path = String(f.webkitRelativePath || f.name);
+      return !path.split('/').some(function (p) { return p.charAt(0) === '.' || p === '__MACOSX'; }) && !/^(Thumbs\.db|desktop\.ini)$/i.test(f.name);
+    });
+    input.value = '';
+    if (!course || !files.length) { if (course) showToast('フォルダの中に送れるファイルがありません'); return; }
+    var bad = files.filter(function (f) {
+      var ext = (String(f.name).match(/\.([A-Za-z0-9]+)$/) || [])[1];
+      return LECTURER_FOLDER_EXTS.indexOf(String(ext || '').toLowerCase()) === -1;
+    });
+    if (bad.length) {
+      showToast('この形式のファイルが入っているため送れません：' + bad.slice(0, 3).map(function (f) { return f.name; }).join('、') + (bad.length > 3 ? ' ほか' + (bad.length - 3) + '件' : ''));
+      return;
+    }
+    var total = files.reduce(function (s, f) { return s + f.size; }, 0);
+    if (files.length > LECTURER_FOLDER_MAX_FILES) { showToast('ファイルが多すぎます（' + LECTURER_FOLDER_MAX_FILES + 'ファイルまで）'); return; }
+    if (files.some(function (f) { return f.size > LECTURER_FOLDER_FILE_MAX; })) { showToast('15MBを超えるファイルが入っています'); return; }
+    if (total > LECTURER_FOLDER_TOTAL_MAX) { showToast('フォルダの合計が大きすぎます（30MBまで）'); return; }
+    var rootName = String(files[0].webkitRelativePath || '').split('/')[0] || 'フォルダ';
+    if (course.lecturerMaterialFileId && !confirm('今の講師資料を、フォルダ「' + rootName + '」（' + files.length + 'ファイル）に差し替えますか？')) return;
+
+    var statusEl = $('ppMaterialUploadStatus');
+    statusEl.classList.remove('hidden');
+    var uploadFolderId = '';
+    var fail = function (msg) {
+      showToast(msg);
+      if (uploadFolderId) callApi('cancelLecturerMaterialFolder', { courseId: course.id, uploadFolderId: uploadFolderId });
+      statusEl.classList.add('hidden');
+    };
+    statusEl.textContent = 'アップロードの準備中…';
+    callApi('beginLecturerMaterialFolder', { courseId: course.id, folderName: rootName, fileCount: files.length }).then(function (res) {
+      if (!res.ok) throw new Error(res.error);
+      uploadFolderId = res.data.uploadFolderId;
+      // 1ファイルずつ順番に送る(同時に送ると、下のフォルダが二重にできることがあるため)
+      return files.reduce(function (p, f, i) {
+        return p.then(function () {
+          statusEl.textContent = 'アップロード中… ' + (i + 1) + ' / ' + files.length;
+          // フォルダの中での位置(先頭のフォルダ名を除く)。例：「スライド/images/1.png」→「images/1.png」
+          var rel = String(f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name;
+          return readFileBase64_(f).then(function (b64) {
+            return callApi('uploadLecturerMaterialFolderFile', { courseId: course.id, uploadFolderId: uploadFolderId, relativePath: rel, base64Data: b64 });
+          }).then(function (r) { if (!r.ok) throw new Error(r.error + '（' + f.name + '）'); });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      statusEl.textContent = '仕上げ中…';
+      return callApi('finishLecturerMaterialFolder', { courseId: course.id, uploadFolderId: uploadFolderId, fileCount: files.length });
+    }).then(function (res) {
+      if (!res.ok) throw new Error(res.error);
+      uploadFolderId = ''; // 差し替えが済んだので、取りやめはしない
+      showToast('講師資料のフォルダをアップロードしました（' + files.length + 'ファイル）');
+      return callApi('listCourses');
+    }).then(function (res) {
+      statusEl.classList.add('hidden');
+      if (res && res.ok) {
+        courses = res.data;
+        renderCourses();
+        activeCourse = courses.filter(function (c) { return c.id === course.id; })[0] || activeCourse;
+        renderPrepMaterialSection(activeCourse);
+      }
+    }).catch(function (e) {
+      fail('フォルダのアップロードに失敗しました。今の講師資料はそのままです：' + String(e && e.message || e));
+    });
   }
 
   function deleteLecturerMaterial_() {
@@ -2999,6 +3104,10 @@
     $('btnPpCommentAdd').addEventListener('click', postPrepComment);
     $('btnPpSave').addEventListener('click', savePrepProgress);
     $('pp-materialFile').addEventListener('change', uploadLecturerMaterial_);
+    // フォルダを選べるブラウザ(パソコン)でだけ、フォルダごとのアップロードを出す
+    if ('webkitdirectory' in document.createElement('input')) $('ppMaterialFolderRow').classList.remove('hidden');
+    $('btnPpMaterialFolder').addEventListener('click', function () { $('pp-materialFolder').click(); });
+    $('pp-materialFolder').addEventListener('change', uploadLecturerMaterialFolder_);
     $('btnPpMaterialDelete').addEventListener('click', deleteLecturerMaterial_);
     $('btnPpFormRefresh').addEventListener('click', refreshFormSummary);
     $('prepProgressModal').addEventListener('click', function (e) {

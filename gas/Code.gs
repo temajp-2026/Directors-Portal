@@ -124,6 +124,12 @@
  *   - 保存フォルダ(講座PDF・報告書添付・講座資料庫)の共有を、名簿(AllowedAccounts)の理事だけに変更し、
  *     既存ファイルの「リンクを知っている全員」共有も解除します(syncDriveSharing)。毎日午前4時ごろ自動で名簿と同期します。
  *   - 講師用リンクで、支払い済みから3日経過した請求書は口座番号を下4桁のみ表示し、その他の振込先を伏せます。
+ * ・【2026-11-13 講師資料の形式】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
+ *   - 講座進捗ページの「④ 講師資料PDF」に、PDFのほか PowerPoint(.ppt / .pptx)と HTML(.html / .htm)も
+ *     アップロードできるようにした。形式はファイル名の拡張子で判断し、それ以外の形式は受け付けない。
+ *   - 同じ欄に「フォルダごと」アップロードできるようにした(HTMLのスライドと画像などをまとめて預かる。
+ *     200ファイル・1ファイル15MB・合計30MBまで。パソコンのブラウザのみ)。保存先は「理事ポータル_講座PDF」の中の
+ *     「講師資料_講座ID_日時_フォルダ名」というフォルダ。途中で失敗したときは、今の講師資料をそのまま残す。
  * ・【2026-10-09(2) 表示の高速化その2】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - 月次報告書・資料庫・役員会・SNSの一覧を読むたびに、シートの準備(見出しの確認・列の書式の固定)を
  *     書き込みで行っていたため、準備進捗・月次報告書・SNSの画面が遅くなっていた。準備は6時間に1回にした
@@ -642,7 +648,7 @@ function handleRequest(e) {
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
     // 例：2人の理事が同じ講座のチェック項目を同時に付けた場合に、片方の変更が消えるのを防ぐ。
     // 時間のかかる処理(PDF一本化・ファイルのアップロード)は、他の人の保存を待たせないよう対象外にする。
-    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadReportAttachment',
+    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'uploadReportAttachment',
       'uploadReportInlineImage', 'uploadMaterialDirector', 'uploadMaterialLecturer'];
     if (!/^(list|get)/.test(action) && LOCK_EXEMPT.indexOf(action) === -1) {
       lock = LockService.getScriptLock();
@@ -680,6 +686,18 @@ function handleRequest(e) {
         break;
       case 'deleteLecturerMaterial':
         result = deleteLecturerMaterial(body.payload, user);
+        break;
+      case 'beginLecturerMaterialFolder':
+        result = beginLecturerMaterialFolder(body.payload, user);
+        break;
+      case 'uploadLecturerMaterialFolderFile':
+        result = uploadLecturerMaterialFolderFile(body.payload, user);
+        break;
+      case 'finishLecturerMaterialFolder':
+        result = finishLecturerMaterialFolder(body.payload, user);
+        break;
+      case 'cancelLecturerMaterialFolder':
+        result = cancelLecturerMaterialFolder(body.payload, user);
         break;
       case 'getFormSignupSummary':
         result = getFormSignupSummary(body.payload);
@@ -1662,19 +1680,31 @@ function decodeHtmlEntities_(s) {
     .replace(/&#(\d+);/g, function (m, n) { return String.fromCharCode(parseInt(n, 10)); });
 }
 
-/** 講座に講師資料PDFを添付(既に添付済みの場合は差し替え)する。payload: { courseId, fileName, mimeType, base64Data } */
+/** 講師資料としてアップロードできる形式(拡張子 → ファイルの種類)。画面(index.html)の一覧と合わせる(2026-11-13) */
+var LECTURER_MATERIAL_TYPES = {
+  pdf: 'application/pdf',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  html: 'text/html',
+  htm: 'text/html'
+};
+
+/** 講座に講師資料(PDF・PowerPoint・HTML)を添付(既に添付済みの場合は差し替え)する。payload: { courseId, fileName, mimeType, base64Data } */
 function uploadLecturerMaterial(payload, user) {
   if (!payload || !payload.courseId) throw new Error('course_not_found');
   if (!payload.base64Data) throw new Error('no_file');
+  // 形式は拡張子で決める(画面から届いたファイルの種類はそのまま信用しない)。一覧にない形式は受け付けない
+  var ext = (String(payload.fileName || '').match(/\.([A-Za-z0-9]+)$/) || [])[1];
+  var mimeType = LECTURER_MATERIAL_TYPES[String(ext || '').toLowerCase()];
+  if (!mimeType) throw new Error('unsupported_file_type');
   var sheet = getCourseSheet();
   var rowIndex = findCourseRowIndex(sheet, payload.courseId);
   if (rowIndex === -1) throw new Error('course_not_found');
 
-  var oldFileId = sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId')).getValue();
-  if (oldFileId) { try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) {} }
+  trashLecturerMaterial_(sheet, rowIndex);
 
   var bytes = Utilities.base64Decode(payload.base64Data);
-  var blob = Utilities.newBlob(bytes, payload.mimeType || 'application/pdf', payload.fileName || '講師資料.pdf');
+  var blob = Utilities.newBlob(bytes, mimeType, payload.fileName);
   var folder = getOrCreateCoursePdfFolder();
   var file = folder.createFile(blob);
 
@@ -1682,11 +1712,11 @@ function uploadLecturerMaterial(payload, user) {
   var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
 
   sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).setValues(safeRows_([[
-    fileId, payload.fileName || '講師資料.pdf', viewUrl
+    fileId, payload.fileName, viewUrl
   ]]));
   sheet.getRange(rowIndex, courseCol('更新日時')).setValue(safeCell_(new Date()));
   appendLog(user.email, 'uploadLecturerMaterial', payload.fileName || '');
-  return { lecturerMaterialFileId: fileId, lecturerMaterialFileName: payload.fileName || '講師資料.pdf', lecturerMaterialUrl: viewUrl };
+  return { lecturerMaterialFileId: fileId, lecturerMaterialFileName: payload.fileName, lecturerMaterialUrl: viewUrl };
 }
 
 /** 講座に添付された講師資料PDFを削除する。payload: { courseId } */
@@ -1696,13 +1726,136 @@ function deleteLecturerMaterial(payload, user) {
   var rowIndex = findCourseRowIndex(sheet, payload.courseId);
   if (rowIndex === -1) throw new Error('course_not_found');
 
-  var oldFileId = sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId')).getValue();
-  if (oldFileId) { try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) {} }
+  trashLecturerMaterial_(sheet, rowIndex);
 
   sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).setValues(safeRows_([['', '', '']]));
   sheet.getRange(rowIndex, courseCol('更新日時')).setValue(safeCell_(new Date()));
   appendLog(user.email, 'deleteLecturerMaterial', payload.courseId);
   return { id: payload.courseId };
+}
+
+/** 今の講師資料(ファイル、またはフォルダ)をゴミ箱に移す。フォルダかどうかは保存したURLで見分ける */
+function trashLecturerMaterial_(sheet, rowIndex) {
+  var vals = sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).getValues()[0];
+  var id = vals[0], url = String(vals[2] || '');
+  if (!id) return;
+  try {
+    if (/\/folders\//.test(url)) DriveApp.getFolderById(id).setTrashed(true);
+    else DriveApp.getFileById(id).setTrashed(true);
+  } catch (e) {}
+}
+
+// ---- 講師資料のフォルダのアップロード(2026-11-13) ----
+// HTMLのスライドと画像など、複数のファイルをフォルダごと預かる。手順：
+//   begin(作業用のフォルダを作る) → file(1ファイルずつ送る) → finish(数を確かめて、講座の講師資料に差し替える)
+//   途中で失敗したら cancel(作業用のフォルダをゴミ箱へ)。finish までは、今の講師資料はそのまま残る。
+var LECTURER_FOLDER_TYPES = {
+  pdf: 'application/pdf', ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/plain', json: 'application/json', txt: 'text/plain', csv: 'text/csv', md: 'text/plain',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp', ico: 'image/x-icon',
+  woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm'
+};
+var LECTURER_FOLDER_MAX_FILES = 200;
+var LECTURER_FOLDER_FILE_MAX_BYTES = 15 * 1024 * 1024;
+var LECTURER_FOLDER_PREFIX = '講師資料_';
+
+/** フォルダやファイルの名前に使えない文字を除く */
+function safeDriveName_(s, max) {
+  return String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').trim().slice(0, max || 100);
+}
+
+/** 作業用のフォルダが、その講座のものとして作ったフォルダかを確かめて返す(ほかの場所に書き込ませない) */
+function lecturerUploadFolder_(courseId, folderId) {
+  var folder;
+  try { folder = DriveApp.getFolderById(String(folderId || '')); } catch (e) { throw new Error('upload_folder_not_found'); }
+  var parents = folder.getParents(), home = getOrCreateCoursePdfFolder().getId(), ok = false;
+  while (parents.hasNext()) { if (parents.next().getId() === home) ok = true; }
+  if (!ok || folder.getName().indexOf(LECTURER_FOLDER_PREFIX + safeDriveName_(courseId, 40) + '_') !== 0 || folder.isTrashed()) throw new Error('upload_folder_not_found');
+  return folder;
+}
+
+/** フォルダの中のファイルの数(下のフォルダも数える) */
+function countFilesInFolder_(folder) {
+  var n = 0, files = folder.getFiles();
+  while (files.hasNext()) { files.next(); n++; }
+  var subs = folder.getFolders();
+  while (subs.hasNext()) n += countFilesInFolder_(subs.next());
+  return n;
+}
+
+/** フォルダのアップロードを始める。payload: { courseId, folderName, fileCount } → { uploadFolderId } */
+function beginLecturerMaterialFolder(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var sheet = getCourseSheet();
+  if (findCourseRowIndex(sheet, payload.courseId) === -1) throw new Error('course_not_found');
+  var n = Number(payload.fileCount);
+  if (!(n >= 1 && n <= LECTURER_FOLDER_MAX_FILES)) throw new Error('too_many_files');
+  var root = safeDriveName_(payload.folderName, 60) || 'フォルダ';
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd-HHmmss');
+  var folder = getOrCreateCoursePdfFolder().createFolder(LECTURER_FOLDER_PREFIX + safeDriveName_(payload.courseId, 40) + '_' + stamp + '_' + root);
+  appendLog(user.email, 'beginLecturerMaterialFolder', payload.courseId + ' ' + n + '件');
+  return { uploadFolderId: folder.getId() };
+}
+
+/**
+ * フォルダの中の1ファイルを送る。payload: { courseId, uploadFolderId, relativePath, base64Data }
+ * relativePath はフォルダの中での位置(例：images/slide1.png)。形式は拡張子で決め、一覧にない形式は受け付けない。
+ */
+function uploadLecturerMaterialFolderFile(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  if (!payload.base64Data) throw new Error('no_file');
+  var parts = String(payload.relativePath || '').split('/');
+  if (!parts.length || parts.length > 6) throw new Error('bad_path');
+  parts.forEach(function (p) { if (!p || p === '.' || p === '..' || p !== safeDriveName_(p, 120)) throw new Error('bad_path'); });
+  var fileName = parts[parts.length - 1];
+  var ext = (fileName.match(/\.([A-Za-z0-9]+)$/) || [])[1];
+  var mimeType = LECTURER_FOLDER_TYPES[String(ext || '').toLowerCase()];
+  if (!mimeType) throw new Error('unsupported_file_type');
+  var bytes = Utilities.base64Decode(payload.base64Data);
+  if (bytes.length > LECTURER_FOLDER_FILE_MAX_BYTES) throw new Error('file_too_large');
+  var folder = lecturerUploadFolder_(payload.courseId, payload.uploadFolderId);
+  if (countFilesInFolder_(folder) >= LECTURER_FOLDER_MAX_FILES) throw new Error('too_many_files');
+  for (var i = 0; i < parts.length - 1; i++) {
+    var it = folder.getFoldersByName(parts[i]);
+    folder = it.hasNext() ? it.next() : folder.createFolder(parts[i]);
+  }
+  folder.createFile(Utilities.newBlob(bytes, mimeType, fileName));
+  return { ok: true };
+}
+
+/** フォルダのアップロードを終える。数が合えば、講座の講師資料をこのフォルダに差し替える。payload: { courseId, uploadFolderId, fileCount } */
+function finishLecturerMaterialFolder(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var folder = lecturerUploadFolder_(payload.courseId, payload.uploadFolderId);
+  var n = countFilesInFolder_(folder);
+  if (n !== Number(payload.fileCount)) throw new Error('folder_incomplete');
+  var sheet = getCourseSheet();
+  var rowIndex = findCourseRowIndex(sheet, payload.courseId);
+  if (rowIndex === -1) throw new Error('course_not_found');
+  var cur = sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId')).getValue();
+  if (cur !== folder.getId()) trashLecturerMaterial_(sheet, rowIndex);
+  // 作業用のフォルダの名前「講師資料_講座ID_日時_元のフォルダ名」から、元のフォルダ名を取り出す(日時は 'yyyyMMdd-HHmmss_' の16文字)
+  var root = folder.getName().slice((LECTURER_FOLDER_PREFIX + safeDriveName_(payload.courseId, 40) + '_').length + 16) || 'フォルダ';
+  var displayName = root + '（フォルダ・' + n + 'ファイル）';
+  var viewUrl = 'https://drive.google.com/drive/folders/' + folder.getId();
+  sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).setValues(safeRows_([[folder.getId(), displayName, viewUrl]]));
+  sheet.getRange(rowIndex, courseCol('更新日時')).setValue(safeCell_(new Date()));
+  appendLog(user.email, 'finishLecturerMaterialFolder', payload.courseId + ' ' + n + '件');
+  return { lecturerMaterialFileId: folder.getId(), lecturerMaterialFileName: displayName, lecturerMaterialUrl: viewUrl };
+}
+
+/** 途中で失敗したフォルダのアップロードを取りやめる(作業用のフォルダをゴミ箱へ)。今の講師資料は変えない */
+function cancelLecturerMaterialFolder(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var folder = lecturerUploadFolder_(payload.courseId, payload.uploadFolderId);
+  var sheet = getCourseSheet();
+  var rowIndex = findCourseRowIndex(sheet, payload.courseId);
+  if (rowIndex !== -1 && sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId')).getValue() === folder.getId()) return { ok: true };
+  folder.setTrashed(true);
+  appendLog(user.email, 'cancelLecturerMaterialFolder', payload.courseId);
+  return { ok: true };
 }
 
 /**

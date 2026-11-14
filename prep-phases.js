@@ -106,7 +106,7 @@
     if (naLecturer) {
       prepItems.push({ type: 'auto', done: true, label: '講師資料PDF', note: NO_LECT });
     } else {
-      prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId || naLecturerPdf, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : (naLecturerPdf ? '不要（この講座では講師資料PDFはありません）' : '講座進捗ページの「④ 講師資料PDF」から登録できます') });
+      prepItems.push({ type: 'auto', done: !!c.lecturerMaterialFileId || naLecturerPdf, label: '講師資料PDFを登録した', note: c.lecturerMaterialFileId ? (c.lecturerMaterialFileName || '') : (naLecturerPdf ? '不要（この講座では講師資料PDFはありません）' : '講座進捗ページの「④ 講師資料PDF」から登録できます（PowerPoint・HTMLも可）') });
       prepItems.push(naItem('naLecturerPdf', naLecturerPdf, '講師資料PDFはない（不要）'));
     }
     prepItems.push({ type: 'info', label: '資料庫の資料', note: '理事 ' + (naDirectorMaterials && !mat.director ? '不要' : mat.director + '件') + '／講師 ' + mat.lecturer + '件' });
