@@ -533,16 +533,30 @@
   }
 
   /* ---------- 一覧 ---------- */
+  // 講座の一覧と記事の一覧は、別々に読む(片方が失敗しても、もう片方は使えるように)。
+  // 講座の一覧は「新しい講座レポート」で使うので、読み込み中に押されても待ってから選択肢を作る。
+  var coursesPromise = null;
+  function loadCourses(force) {
+    if (coursesPromise && !force) return coursesPromise;
+    coursesPromise = callApi('listCourses', { lite: true }).then(function (res) {
+      if (!res.ok) { showToast('講座の一覧を読み込めませんでした：' + errText(res.error)); coursesPromise = null; return courses; }
+      courses = (res.data || []).filter(function (c) { return c.status !== '中止'; });
+      courses.sort(function (a, b) { return String(b.eventDate || '').localeCompare(String(a.eventDate || '')); });
+      return courses;
+    }).catch(function () { showToast('講座の一覧を読み込めませんでした（通信）'); coursesPromise = null; return courses; });
+    return coursesPromise;
+  }
   function loadData() {
     $('loadingState').classList.remove('hidden');
-    return Promise.all([callApi('listCourses', { lite: true }), callApi('listNewsArticles', {})]).then(function (rs) {
+    var pc = loadCourses(true);
+    var pa = callApi('listNewsArticles', {}).then(function (res) {
+      if (!res.ok) { showToast('講座レポートの一覧を読み込めませんでした：' + errText(res.error)); return; }
+      articles = res.data || [];
+    }).catch(function () { showToast('講座レポートの一覧を読み込めませんでした（通信）'); });
+    return Promise.all([pc, pa]).then(function () {
       $('loadingState').classList.add('hidden');
-      if (!rs[0].ok) { showToast(errText(rs[0].error)); return; }
-      courses = (rs[0].data || []).filter(function (c) { return c.status !== '中止'; });
-      courses.sort(function (a, b) { return String(b.eventDate || '').localeCompare(String(a.eventDate || '')); });
-      articles = rs[1].ok ? (rs[1].data || []) : [];
       renderList();
-    }).catch(function () { $('loadingState').classList.add('hidden'); showToast('読み込みに失敗しました'); });
+    });
   }
 
   function renderList() {
@@ -573,16 +587,23 @@
   var createState = null; // { course, items, aiReady, inputText }
   function startCreate(courseId) {
     var sel = $('cCourse');
-    sel.innerHTML = '<option value="">講座を選んでください</option>' + courses.map(function (c) {
-      return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml((c.eventDate || '日付未定') + '　' + c.name) + '</option>';
-    }).join('');
-    sel.value = courseId || '';
+    sel.innerHTML = '<option value="">講座の一覧を読み込み中…</option>';
+    sel.disabled = true;
+    // 講座の一覧がまだ無ければ(読み込み中・失敗)、読み終わるのを待ってから選択肢を作る
+    (courses.length ? Promise.resolve(courses) : loadCourses(false)).then(function (list) {
+      if (!list.length) list = [];
+      sel.disabled = false;
+      sel.innerHTML = '<option value="">' + (list.length ? '講座を選んでください' : '講座が見つかりません（画面を再読み込みしてください）') + '</option>' + list.map(function (c) {
+        return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml((c.eventDate || '日付未定') + '　' + c.name) + '</option>';
+      }).join('');
+      sel.value = courseId || '';
+      if (courseId) loadSources(courseId);
+    });
     $('cSourcesPanel').classList.add('hidden');
     $('cPreviewPanel').classList.add('hidden');
     $('cAvoid').value = '';
     createState = null;
     showView('viewCreate');
-    if (courseId) loadSources(courseId);
   }
 
   function loadSources(courseId) {
