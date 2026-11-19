@@ -27,8 +27,9 @@ NPO法人 日本繊維商品めんてなんす研究会（TeMA）の理事向け
 | reports.html | 月次報告書（ベータ版） | 要 |
 | materials.html / materials-lecturer.html | 資料庫（理事用／講師用） | 要／不要 |
 | sns.html | SNS文章作成＆履歴（ベータ版） | 要 |
+| news.html | TeMA NEWS（講座レポートのたたき台・紙面の編集・PDF発行。ベータ版）。AIは GAS 経由で Anthropic API（鍵はスクリプト プロパティ `ANTHROPIC_API_KEY`） | 要 |
 | prep-phases.js | 8段階の判定（index と course-progress で共用） | － |
-| portal-nav.js | 画面切り替えバーと講座ごとのリンク（ログインが必要な6画面で共用） | － |
+| portal-nav.js | 画面切り替えバーと講座ごとのリンク（ログインが必要な7画面で共用） | － |
 | 講師依頼_請書兼請求書.html | 旧試作。未使用 | － |
 
 ## 共通の実装ルール（画面）

@@ -124,6 +124,13 @@
  *   - 保存フォルダ(講座PDF・報告書添付・講座資料庫)の共有を、名簿(AllowedAccounts)の理事だけに変更し、
  *     既存ファイルの「リンクを知っている全員」共有も解除します(syncDriveSharing)。毎日午前4時ごろ自動で名簿と同期します。
  *   - 講師用リンクで、支払い済みから3日経過した請求書は口座番号を下4桁のみ表示し、その他の振込先を伏せます。
+ * ・【2026-11-19 TeMA NEWS(講座レポート)】新しいシート「NewsArticles」は初めて使うときに自動で作られます(initializeSpreadsheetの再実行は不要)。
+ *   - 講座に紐づく講師資料・資料庫の資料・月次報告書を読み、AI(Anthropic 社の Claude)で A4 一枚の講座レポートの
+ *     たたき台を作る機能を追加(画面は news.html)。紙面の上で直接書き換え、印刷の機能で PDF にする。
+ *   - AI を使うには、スクリプト プロパティに「ANTHROPIC_API_KEY」(Anthropic の管理画面で作る鍵)を登録する。
+ *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
+ *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
+ *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
  * ・【2026-11-14 お知らせ・開催準備】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - トップ画面のお知らせ(tema.jp)：画面から tema.jp の公開の一覧(WordPress の REST API)を直接読むようにした。
  *     サーバー側も、まず同じ一覧を読み、だめならトップページから読み取る(今まで通り)。
@@ -652,7 +659,7 @@ function handleRequest(e) {
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
     // 例：2人の理事が同じ講座のチェック項目を同時に付けた場合に、片方の変更が消えるのを防ぐ。
     // 時間のかかる処理(PDF一本化・ファイルのアップロード)は、他の人の保存を待たせないよう対象外にする。
-    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'uploadReportAttachment',
+    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'uploadReportAttachment',
       'uploadReportInlineImage', 'uploadMaterialDirector', 'uploadMaterialLecturer'];
     if (!/^(list|get)/.test(action) && LOCK_EXEMPT.indexOf(action) === -1) {
       lock = LockService.getScriptLock();
@@ -801,6 +808,30 @@ function handleRequest(e) {
         break;
       case 'deleteSnsPost':
         result = deleteSnsPost(body.payload, user);
+        break;
+      case 'listNewsArticles':
+        result = listNewsArticles(body.payload);
+        break;
+      case 'getNewsArticle':
+        result = getNewsArticle(body.payload);
+        break;
+      case 'getNewsSources':
+        result = getNewsSources(body.payload);
+        break;
+      case 'prepareNewsInput':
+        result = prepareNewsInput(body.payload, user);
+        break;
+      case 'generateNewsDraft':
+        result = generateNewsDraft(body.payload, user);
+        break;
+      case 'saveNewsArticle':
+        result = saveNewsArticle(body.payload, user);
+        break;
+      case 'markNewsIssued':
+        result = markNewsIssued(body.payload, user);
+        break;
+      case 'deleteNewsArticle':
+        result = deleteNewsArticle(body.payload, user);
         break;
       case 'getPrepOverview':
         result = getPrepOverview(body.payload);
@@ -3832,4 +3863,407 @@ function safeRows_(rows) { return (rows || []).map(safeRow_); }
 
 function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * ===== TeMA NEWS(講座レポートのたたき台・編集・PDF発行) 2026-11 =====
+ * 講座に紐づく講師資料・資料庫の資料・月次報告書を読み、AI(Anthropic 社の Claude)で A4 一枚の講座レポートの
+ * たたき台を作る。画面(news.html)で直接書き換え、印刷の機能で PDF にする。ログインした理事なら誰でも使える。
+ * 【個人情報を送らないための仕組み】
+ *  1. 形式：表計算(xlsx/csv 等)・画像・動画など、名簿になりやすい／文字を読めない形式は使わない。
+ *  2. ファイル名：「名簿」「受講者」「参加者」「申込」「出席」「リスト」などを含むファイルは使わない。
+ *  3. 中身：メールアドレス・電話番号・「〇〇様」が多い資料は名簿の可能性があるため使わない。少しだけ含まれる場合は伏せ字にする。
+ *  4. 月次報告書は、その講座が載っている報告書の本文だけを使い、報告者名・添付ファイルは使わない。
+ *  5. AIに送る前に、送る内容を画面で確かめてもらう。送るときにもサーバー側で 3 の確認をもう一度行う。
+ * AIの鍵(APIキー)はスクリプト プロパティ「ANTHROPIC_API_KEY」に保存する(コード・画面・GitHub には書かない)。
+ */
+var SHEET_NEWS = 'NewsArticles';
+var NEWS_HEADERS = [
+  'id', 'courseId', 'courseName', 'title', 'contentJson', 'status',
+  'createdBy', 'createdAt', 'updatedBy', 'updatedAt', 'issuedBy', 'issuedAt', 'deletedBy', 'deletedAt'
+];
+var NEWS_AI_MODEL = 'claude-opus-5-5';
+var NEWS_SOURCE_MAX_CHARS = 60000;   // AIに送る資料の文字数の上限(超えた分は送らない。画面で知らせる)
+var NEWS_MAX_FILES = 12;             // 1回に読む資料のファイル数の上限(時間の上限を超えないため)
+var NEWS_TEXT_TYPES = { pdf: 'pdf', ppt: 'office', pptx: 'office', doc: 'office', docx: 'office', html: 'html', htm: 'html', txt: 'text', md: 'text' };
+var NEWS_SHEET_TYPES = { xls: 1, xlsx: 1, csv: 1, tsv: 1, ods: 1, numbers: 1 };
+var NEWS_ROSTER_NAME_RE = /(名簿|受講者|受講生|参加者|申込|申し込み|出席|出欠|リスト|一覧表|住所録|連絡先|roster|attendee|participant|member.?list)/i;
+
+function newsCol_(fieldName) {
+  var idx = NEWS_HEADERS.indexOf(fieldName);
+  if (idx === -1) throw new Error('invalid_news_field:' + fieldName);
+  return idx + 1;
+}
+function getNewsSheet_() {
+  var sheet = getOrCreateManagedSheet_(SHEET_NEWS, NEWS_HEADERS);
+  ensureColumnCapacity(sheet, NEWS_HEADERS.length);
+  return sheet;
+}
+function newsRowToObject_(values) {
+  var obj = {};
+  NEWS_HEADERS.forEach(function (h, i) { obj[h] = values[i]; });
+  obj.createdAt = formatDateTime(obj.createdAt);
+  obj.updatedAt = formatDateTime(obj.updatedAt);
+  obj.issuedAt = formatDateTime(obj.issuedAt);
+  obj.deletedAt = formatDateTime(obj.deletedAt);
+  return obj;
+}
+
+/** 記事の一覧(本文は返さない)。payload: { courseId(省略可) } */
+function listNewsArticles(payload) {
+  var values = getSheetForRead_(SHEET_NEWS, NEWS_HEADERS, getNewsSheet_).getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < values.length; i++) {
+    if (!values[i][0]) continue;
+    var o = newsRowToObject_(values[i]);
+    if (o.status === '削除済み') continue;
+    if (payload && payload.courseId && o.courseId !== payload.courseId) continue;
+    delete o.contentJson;
+    rows.push(o);
+  }
+  rows.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return rows;
+}
+
+/** 記事を1件返す(本文つき)。payload: { id } */
+function getNewsArticle(payload) {
+  if (!payload || !payload.id) throw new Error('news_not_found');
+  var sheet = getNewsSheet_();
+  var rowIndex = findMaterialRowIndex_(sheet, payload.id);
+  if (rowIndex === -1) throw new Error('news_not_found');
+  var o = newsRowToObject_(sheet.getRange(rowIndex, 1, 1, NEWS_HEADERS.length).getValues()[0]);
+  if (o.status === '削除済み') throw new Error('news_not_found');
+  return o;
+}
+
+/** 記事の中身を確かめて、保存できる形にする(画面からの値をそのまま信用しない) */
+function sanitizeNewsContent_(c) {
+  var s = function (v, max) { return String(v == null ? '' : v).slice(0, max || 2000); };
+  c = c || {};
+  var out = {
+    kicker: s(c.kicker, 120), title: s(c.title, 200), lead: s(c.lead, 1200),
+    meta: (Array.isArray(c.meta) ? c.meta : []).slice(0, 8).map(function (m) { return { label: s(m && m.label, 30), value: s(m && m.value, 200) }; }),
+    sections: (Array.isArray(c.sections) ? c.sections : []).slice(0, 8).map(function (x) {
+      x = x || {};
+      return {
+        tone: x.tone === 'soft' ? 'soft' : 'clear',
+        heading: s(x.heading, 200), body: s(x.body, 3000),
+        boxes: (Array.isArray(x.boxes) ? x.boxes : []).slice(0, 4).map(function (b) {
+          return { title: s(b && b.title, 80), items: (Array.isArray(b && b.items) ? b.items : []).slice(0, 8).map(function (t) { return s(t, 200); }) };
+        }),
+        steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 6).map(function (p) { return { title: s(p && p.title, 40), text: s(p && p.text, 120) }; })
+      };
+    }),
+    footer: s(c.footer, 200)
+  };
+  var json = JSON.stringify(out);
+  if (json.length > 45000) throw new Error('news_too_long'); // セル1つの上限(5万文字)より小さく
+  return out;
+}
+
+/** 記事を保存する(新規・更新)。payload: { id(更新時), courseId, content } */
+function saveNewsArticle(payload, user) {
+  if (!payload) throw new Error('news_not_found');
+  var content = sanitizeNewsContent_(payload.content);
+  var courseName = '';
+  if (payload.courseId) {
+    var cs = getCourseSheet();
+    var cRow = findCourseRowIndex(cs, payload.courseId);
+    if (cRow === -1) throw new Error('course_not_found');
+    courseName = cs.getRange(cRow, courseCol('名称')).getValue() || '';
+  }
+  var sheet = getNewsSheet_();
+  var now = new Date(), who = user.name || user.email;
+  if (payload.id) {
+    var rowIndex = findMaterialRowIndex_(sheet, payload.id);
+    if (rowIndex === -1) throw new Error('news_not_found');
+    var cur = newsRowToObject_(sheet.getRange(rowIndex, 1, 1, NEWS_HEADERS.length).getValues()[0]);
+    if (cur.status === '削除済み') throw new Error('news_not_found');
+    sheet.getRange(rowIndex, newsCol_('courseId'), 1, 4).setValues(safeRows_([[payload.courseId || '', courseName, content.title.replace(/\n/g, ' '), JSON.stringify(content)]]));
+    sheet.getRange(rowIndex, newsCol_('updatedBy'), 1, 2).setValues(safeRows_([[who, now]]));
+    return { id: payload.id, updatedAt: formatDateTime(now) };
+  }
+  var obj = { id: Utilities.getUuid(), courseId: payload.courseId || '', courseName: courseName, title: content.title.replace(/\n/g, ' '),
+    contentJson: JSON.stringify(content), status: '下書き', createdBy: who, createdAt: now, updatedBy: who, updatedAt: now,
+    issuedBy: '', issuedAt: '', deletedBy: '', deletedAt: '' };
+  sheet.appendRow(safeRow_(NEWS_HEADERS.map(function (h) { return obj[h]; })));
+  appendLog(user.email, 'saveNewsArticle', courseName + '(新規)');
+  return { id: obj.id, updatedAt: formatDateTime(now) };
+}
+
+/** PDFを発行したことを記録する。payload: { id } */
+function markNewsIssued(payload, user) {
+  if (!payload || !payload.id) throw new Error('news_not_found');
+  var sheet = getNewsSheet_();
+  var rowIndex = findMaterialRowIndex_(sheet, payload.id);
+  if (rowIndex === -1) throw new Error('news_not_found');
+  var now = new Date();
+  sheet.getRange(rowIndex, newsCol_('status')).setValue(safeCell_('発行済み'));
+  sheet.getRange(rowIndex, newsCol_('issuedBy'), 1, 2).setValues(safeRows_([[user.name || user.email, now]]));
+  appendLog(user.email, 'markNewsIssued', payload.id);
+  return { id: payload.id, issuedAt: formatDateTime(now) };
+}
+
+/** 記事を削除する(論理削除)。payload: { id } */
+function deleteNewsArticle(payload, user) {
+  if (!payload || !payload.id) throw new Error('news_not_found');
+  var sheet = getNewsSheet_();
+  var rowIndex = findMaterialRowIndex_(sheet, payload.id);
+  if (rowIndex === -1) throw new Error('news_not_found');
+  sheet.getRange(rowIndex, newsCol_('status')).setValue(safeCell_('削除済み'));
+  sheet.getRange(rowIndex, newsCol_('deletedBy'), 1, 2).setValues(safeRows_([[user.email, new Date()]]));
+  appendLog(user.email, 'deleteNewsArticle', payload.id);
+  return { id: payload.id };
+}
+
+// ---- 材料(講師資料・資料庫・月次報告書) ----
+
+function newsFileExt_(name) { return String((String(name || '').match(/\.([A-Za-z0-9]+)$/) || [])[1] || '').toLowerCase(); }
+
+/** ファイルを材料に使えるか(形式・ファイル名で判断)。戻り値：{ usable, reason } */
+function newsFileUsable_(name) {
+  var ext = newsFileExt_(name);
+  if (NEWS_SHEET_TYPES[ext]) return { usable: false, reason: '表計算の形式は名簿になりやすいため使いません' };
+  if (!NEWS_TEXT_TYPES[ext]) return { usable: false, reason: '文字を読み取れない形式のため使いません' };
+  if (NEWS_ROSTER_NAME_RE.test(String(name || ''))) return { usable: false, reason: 'ファイル名から名簿の可能性があるため使いません' };
+  return { usable: true, reason: '' };
+}
+
+/** 講座の材料の一覧を返す(中身はまだ読まない)。payload: { courseId } */
+function getNewsSources(payload) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var cs = getCourseSheet();
+  var rowIndex = findCourseRowIndex(cs, payload.courseId);
+  if (rowIndex === -1) throw new Error('course_not_found');
+  var c = courseRowToObject(cs.getRange(rowIndex, 1, 1, COURSE_HEADERS.length).getValues()[0]);
+  var items = [];
+  // ④ 講師資料(ファイル、またはフォルダ)
+  if (c.lecturerMaterialFileId) {
+    if (/\/folders\//.test(String(c.lecturerMaterialUrl || ''))) {
+      newsListFolderFiles_(c.lecturerMaterialFileId, '', []).forEach(function (f) {
+        var u = newsFileUsable_(f.name);
+        items.push({ key: 'lf:' + f.id, kind: '講師資料', label: f.path, usable: u.usable, reason: u.reason });
+      });
+    } else {
+      var u1 = newsFileUsable_(c.lecturerMaterialFileName);
+      items.push({ key: 'lf:' + c.lecturerMaterialFileId, kind: '講師資料', label: c.lecturerMaterialFileName, usable: u1.usable, reason: u1.reason });
+    }
+  }
+  // 資料庫
+  listMaterials({ courseId: c.id }).forEach(function (m) {
+    var u2 = newsFileUsable_(m.fileName);
+    items.push({ key: 'mt:' + m.id, kind: '資料庫（' + (m.uploaderRole || '理事') + '）', label: m.fileName + (m.category ? '（' + m.category + '）' : ''), usable: u2.usable, reason: u2.reason });
+  });
+  // 月次報告書(提出済みで、この講座が「直近の講座開催」に載っているもの)
+  newsReportsForCourse_(c).forEach(function (r) {
+    items.push({ key: 'rp:' + r.id, kind: '月次報告書', label: r.month + '　' + r.department, usable: true, reason: '' });
+  });
+  return {
+    course: { id: c.id, name: c.name, eventDate: c.eventDate, startTime: c.startTime, endTime: c.endTime, venue: c.venue, format: c.format, department: c.department },
+    items: items,
+    articles: listNewsArticles({ courseId: c.id }),
+    aiReady: !!PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY')
+  };
+}
+
+/** フォルダの中のファイル(下のフォルダも含む・最大 50 件) */
+function newsListFolderFiles_(folderId, prefix, out) {
+  var folder = DriveApp.getFolderById(folderId);
+  var files = folder.getFiles();
+  while (files.hasNext() && out.length < 50) { var f = files.next(); out.push({ id: f.getId(), name: f.getName(), path: prefix + f.getName() }); }
+  var subs = folder.getFolders();
+  while (subs.hasNext() && out.length < 50) { var s = subs.next(); newsListFolderFiles_(s.getId(), prefix + s.getName() + '/', out); }
+  return out;
+}
+
+function newsReportsForCourse_(c) {
+  var key = normalizeCourseTitle_(c.name);
+  return listReports({}).filter(function (r) {
+    if (r.status !== '提出済み') return false;
+    return (r.courses || []).some(function (e) {
+      return normalizeCourseTitle_(e.title) === key && (!e.eventDate || !c.eventDate || e.eventDate === c.eventDate);
+    });
+  });
+}
+
+/** Drive のファイルの文字を取り出す(PDF は OCR、Office は Google 形式に変換して文字だけを書き出す) */
+function newsExtractFileText_(fileId) {
+  var file = DriveApp.getFileById(fileId);
+  var name = file.getName();
+  var type = NEWS_TEXT_TYPES[newsFileExt_(name)];
+  if (type === 'pdf') return ocrPdfFileText_(fileId);
+  if (type === 'html') {
+    var html = file.getBlob().getDataAsString('UTF-8').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr)>/gi, '\n');
+    return decodeHtmlEntities_(stripHtmlTags_(html));
+  }
+  if (type === 'text') return file.getBlob().getDataAsString('UTF-8');
+  if (type === 'office') {
+    var tempId = null;
+    try {
+      tempId = Drive.Files.insert({ title: 'NEWS_TEMP_' + Utilities.getUuid() }, file.getBlob(), { convert: true }).id;
+      var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v2/files/' + tempId + '/export?mimeType=text%2Fplain', {
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+      });
+      if (res.getResponseCode() !== 200) throw new Error('export_' + res.getResponseCode());
+      return res.getContentText('UTF-8');
+    } finally {
+      if (tempId) { try { Drive.Files.remove(tempId); } catch (e) {} }
+    }
+  }
+  throw new Error('unsupported_file_type');
+}
+
+/**
+ * 名簿らしさを調べ、連絡先を伏せる。戻り値：{ text, blocked, reason, masked }
+ * メールアドレス・電話番号が3つ以上、または「〇〇様」が5つ以上あれば、名簿の可能性ありとして使わない。
+ */
+function newsScanPersonalInfo_(text) {
+  var t = String(text || '');
+  var emails = t.match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || [];
+  var phones = t.match(/(?:\+81[\s\-]?|0)\d{1,4}[\s\-−‐]?\d{1,4}[\s\-−‐]?\d{3,4}/g) || [];
+  // 「〇〇様」(人の名前に付く様)。お客様・皆様・多様・同様・様々など、名前でない言葉は数えない
+  // (行をまたいで2人分を1つと数えないよう、間の空白は改行を含めない)
+  var honorifics = (t.match(/[一-鿿぀-ヿ]{1,8}[ 　]?[一-鿿぀-ヿ]{0,8}[ 　]?様(?![々化子式相])/g) || [])
+    .filter(function (m) { return !/(お客|客|皆|みな|多|同|仕|模|異|一|有|王|神|殿|各)様$/.test(m.replace(/[\s　]/g, '')); });
+  if (emails.length >= 3 || phones.length >= 3 || honorifics.length >= 5) {
+    return { text: '', blocked: true, reason: '連絡先や「〇〇様」が多く、名簿の可能性があるため使いません', masked: 0 };
+  }
+  var masked = emails.length + phones.length;
+  t = t.replace(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g, '［メールアドレス省略］')
+       .replace(/(?:\+81[\s\-]?|0)\d{1,4}[\s\-−‐]?\d{1,4}[\s\-−‐]?\d{3,4}/g, '［電話番号省略］');
+  return { text: t, blocked: false, reason: '', masked: masked };
+}
+
+/**
+ * 選んだ材料の文字を取り出し、AIに送る内容を作る(まだ送らない)。payload: { courseId, keys:[...] }
+ * 戻り値：{ inputText, sources:[{ key, kind, label, ok, reason, chars, masked }], truncated }
+ */
+function prepareNewsInput(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var src = getNewsSources({ courseId: payload.courseId });
+  var byKey = {};
+  src.items.forEach(function (it) { byKey[it.key] = it; });
+  var keys = (Array.isArray(payload.keys) ? payload.keys : []).filter(function (k) { return byKey[k]; });
+  if (!keys.length) throw new Error('news_no_sources');
+  if (keys.filter(function (k) { return k.indexOf('rp:') !== 0; }).length > NEWS_MAX_FILES) throw new Error('news_too_many_files');
+  var c = src.course;
+  var parts = ['【講座の情報】', '講座名：' + c.name, '開催日：' + (c.eventDate || '未定') + (c.startTime ? '　' + c.startTime + (c.endTime ? '〜' + c.endTime : '') : ''),
+    '会場：' + (c.venue || ''), '研修形式：' + (c.format || ''), '担当科：' + (c.department || '')];
+  var sources = [], total = parts.join('\n').length, truncated = false;
+  var reportsById = {};
+  newsReportsForCourse_({ name: c.name, eventDate: c.eventDate }).forEach(function (r) { reportsById[r.id] = r; });
+  var materialsById = {};
+  listMaterials({ courseId: c.id }).forEach(function (m) { materialsById[m.id] = m; });
+
+  keys.forEach(function (k) {
+    var it = byKey[k];
+    var rec = { key: k, kind: it.kind, label: it.label, ok: false, reason: '', chars: 0, masked: 0 };
+    sources.push(rec);
+    if (!it.usable) { rec.reason = it.reason; return; }
+    var raw = '';
+    try {
+      if (k.indexOf('lf:') === 0) raw = newsExtractFileText_(k.slice(3));
+      else if (k.indexOf('mt:') === 0) raw = newsExtractFileText_(materialsById[k.slice(3)].fileId);
+      else if (k.indexOf('rp:') === 0) {
+        var r = reportsById[k.slice(3)];
+        var entry = (r.courses || []).filter(function (e) { return normalizeCourseTitle_(e.title) === normalizeCourseTitle_(c.name); })[0] || {};
+        // 報告者名・添付ファイルは使わない。講座の行(参加人数)と、担当科の本文だけ
+        raw = '参加人数：会場 ' + (entry.venueCount || 0) + '名／ZOOM ' + (entry.zoomCount || 0) + '名\n' +
+          'その他の報告：\n' + String(r.otherContent || '') + '\n課題・改善点：\n' + String(r.issuesContent || '');
+      }
+    } catch (e) {
+      rec.reason = '読み取れませんでした（' + String(e && e.message || e).slice(0, 80) + '）';
+      return;
+    }
+    var scan = newsScanPersonalInfo_(raw);
+    if (scan.blocked) { rec.reason = scan.reason; return; }
+    var text = scan.text.replace(/[ \t　]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    if (!text) { rec.reason = '文字が見つかりませんでした'; return; }
+    var room = NEWS_SOURCE_MAX_CHARS - total;
+    if (room <= 200) { rec.reason = '文字数の上限を超えたため使いません'; truncated = true; return; }
+    if (text.length > room) { text = text.slice(0, room); truncated = true; }
+    rec.ok = true; rec.chars = text.length; rec.masked = scan.masked;
+    parts.push('\n【' + it.kind + '：' + it.label + '】\n' + text);
+    total += text.length;
+  });
+  appendLog(user.email, 'prepareNewsInput', c.name + '：' + sources.filter(function (s) { return s.ok; }).length + '件');
+  return { inputText: parts.join('\n'), sources: sources, truncated: truncated };
+}
+
+// AI に返してもらう形(A4 一枚の講座レポート)
+var NEWS_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['kicker', 'title', 'lead', 'meta', 'sections'],
+  properties: {
+    kicker: { type: 'string' }, title: { type: 'string' }, lead: { type: 'string' },
+    meta: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['label', 'value'], properties: { label: { type: 'string' }, value: { type: 'string' } } } },
+    sections: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['tone', 'heading', 'body', 'boxes', 'steps'], properties: {
+      tone: { type: 'string', enum: ['clear', 'soft'] }, heading: { type: 'string' }, body: { type: 'string' },
+      boxes: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'items'], properties: { title: { type: 'string' }, items: { type: 'array', items: { type: 'string' } } } } },
+      steps: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'text'], properties: { title: { type: 'string' }, text: { type: 'string' } } } }
+    } } }
+  }
+};
+
+var NEWS_SYSTEM_PROMPT = [
+  'あなたは、NPO法人 日本繊維商品めんてなんす研究会(TeMA)の会員向け会報「TeMA NEWS」の編集者です。',
+  '講座の資料をもとに、A4一枚に収まる講座レポートのたたき台を日本語で作ります。読み手はクリーニング業界の会員企業の方です。',
+  '',
+  '# 守ること',
+  '- 資料に書かれていることだけを使い、資料にない事実・数字・発言を作らない。',
+  '- 受講者・申込者・報告者など、講師以外の個人の名前や連絡先は書かない。講師の名前と所属は、資料にあれば書いてよい。',
+  '- 「書かない項目」として指定されたことは、ぼかした形でも書かない。',
+  '- 受講した人との差を残すため、構成を4つに分ける。',
+  '  1つ目(起)と2つ目(承)は tone を "clear" にし、テーマ・背景・講座で扱った要点を、はっきり具体的に書く。',
+  '  3つ目(転)と4つ目(結)は tone を "soft" にし、核心の手法・具体的な数字・手順・失敗談の中身は書かず、「何かがある」と興味を引く程度にぼかす。',
+  '  最後は、続きは講座で、という気持ちになる一文で終える。',
+  '- 文体は「です・ます」。専門用語は使いすぎず、平易に。',
+  '',
+  '# 分量(A4一枚に収めるため)',
+  '- title：40字前後(改行を1つ入れて2行にしてよい)。kicker：短い見出しラベル。lead：120〜160字。',
+  '- meta：講座・開催・講師など3〜4項目。分からない項目は入れない。',
+  '- sections：4つ。body はそれぞれ100〜220字。boxes は起に最大2つ(各4項目まで)、steps は承に最大4つ。転・結には boxes と steps を入れない。'
+].join('\n');
+
+/** AIにたたき台を作らせる。payload: { courseId, inputText, avoid } 戻り値：{ content } */
+function generateNewsDraft(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!key) throw new Error('news_ai_not_configured');
+  var input = String(payload.inputText || '');
+  if (!input.trim()) throw new Error('news_no_sources');
+  if (input.length > NEWS_SOURCE_MAX_CHARS + 2000) throw new Error('news_input_too_long');
+  // 画面から届いた内容も、送る直前にもう一度確かめる(名簿らしさ・連絡先の伏せ字)
+  var scan = newsScanPersonalInfo_(input);
+  if (scan.blocked) throw new Error('news_personal_info');
+  var avoid = String(payload.avoid || '').slice(0, 1000);
+  var userText = '次の資料から、TeMA NEWS の講座レポートのたたき台を作ってください。\n\n' +
+    '# 書かない項目\n' + (avoid.trim() || '(指定なし)') + '\n\n# 資料\n' + scan.text;
+  var body = {
+    model: NEWS_AI_MODEL,
+    max_tokens: 8000,
+    system: NEWS_SYSTEM_PROMPT,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: NEWS_SCHEMA } },
+    fallbacks: 'default',
+    messages: [{ role: 'user', content: userText }]
+  };
+  var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2026-10-21', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+    payload: JSON.stringify(body)
+  });
+  var code = res.getResponseCode();
+  if (code !== 200) {
+    var msg = '';
+    try { msg = JSON.parse(res.getContentText()).error.message || ''; } catch (e) {}
+    throw new Error('news_ai_error:' + code + (msg ? ' ' + String(msg).slice(0, 120) : ''));
+  }
+  var data = JSON.parse(res.getContentText());
+  if (data.stop_reason === 'refusal') throw new Error('news_ai_refused');
+  if (data.stop_reason === 'max_tokens') throw new Error('news_ai_too_long');
+  var text = (data.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
+  var content;
+  try { content = JSON.parse(text); } catch (e2) { throw new Error('news_ai_bad_output'); }
+  appendLog(user.email, 'generateNewsDraft', payload.courseId + ' 入力' + (data.usage ? data.usage.input_tokens : '?') + '／出力' + (data.usage ? data.usage.output_tokens : '?'));
+  return { content: sanitizeNewsContent_(content) };
 }

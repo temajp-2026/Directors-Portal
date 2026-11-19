@@ -14,7 +14,8 @@
     { file: 'invoice-ledger.html',  label: '請求書',     color: '#1a73e8' },
     { file: 'reports.html',         label: '月次報告書', color: '#e8710a' },
     { file: 'materials.html',       label: '資料庫',     color: '#8430ce' },
-    { file: 'sns.html',             label: 'SNS',        color: '#d01884' }
+    { file: 'sns.html',             label: 'SNS',        color: '#d01884' },
+    { file: 'news.html',            label: 'TeMA NEWS',  color: '#00796b' }
   ];
 
   // 講座ごとのリンク(key は exclude 指定に使う)
@@ -23,7 +24,8 @@
     { key: 'progress',  label: '準備進捗', href: function (id) { return 'course-progress.html?course=' + encodeURIComponent(id); } },
     { key: 'invoice',   label: '請求書',   href: function (id) { return 'invoice-ledger.html?course=' + encodeURIComponent(id); } },
     { key: 'materials', label: '資料庫',   href: function (id) { return 'materials.html?course=' + encodeURIComponent(id); } },
-    { key: 'sns',       label: 'SNS',      href: function (id) { return 'sns.html?course=' + encodeURIComponent(id); } }
+    { key: 'sns',       label: 'SNS',      href: function (id) { return 'sns.html?course=' + encodeURIComponent(id); } },
+    { key: 'news',      label: 'TeMA NEWS', href: function (id) { return 'news.html?course=' + encodeURIComponent(id); } }
   ];
 
   function currentFile() {
