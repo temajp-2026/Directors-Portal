@@ -818,6 +818,9 @@ function handleRequest(e) {
       case 'getNewsSources':
         result = getNewsSources(body.payload);
         break;
+      case 'getNewsSourceFile':
+        result = getNewsSourceFile(body.payload);
+        break;
       case 'prepareNewsInput':
         result = prepareNewsInput(body.payload, user);
         break;
@@ -4091,7 +4094,19 @@ function newsExtractFileText_(fileId) {
   var file = DriveApp.getFileById(fileId);
   var name = file.getName();
   var type = NEWS_TEXT_TYPES[newsFileExt_(name)];
-  if (type === 'pdf') return ocrPdfFileText_(fileId);
+  if (type === 'pdf') {
+    // PDF の文字は、ふつうは画面(ブラウザ)で読み取って届く(clientTexts)。ここに来るのは、画面で読めなかったとき(画像だけの PDF など)。
+    // Google の OCR は回数の上限(rate limit)に当たりやすいので、少し待って2回までやり直す
+    // (スライドを画像にした PDF は文字が入っていないので、ここで OCR する)
+    var waits = [5000, 15000, 30000];
+    for (var attempt = 0; ; attempt++) {
+      try { return ocrPdfFileText_(fileId); }
+      catch (e) {
+        if (attempt >= waits.length || !/rate limit|Rate Limit|429/.test(String(e && e.message || e))) throw e;
+        Utilities.sleep(waits[attempt]);
+      }
+    }
+  }
   if (type === 'html') {
     var html = file.getBlob().getDataAsString('UTF-8').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr)>/gi, '\n');
     return decodeHtmlEntities_(stripHtmlTags_(html));
@@ -4111,6 +4126,29 @@ function newsExtractFileText_(fileId) {
     }
   }
   throw new Error('unsupported_file_type');
+}
+
+/**
+ * 材料の PDF のファイルそのものを返す(画面で文字を読み取るため)。payload: { courseId, key }
+ * その講座の材料の一覧にあって、使ってよい(名簿らしくない) PDF だけを返す。
+ */
+function getNewsSourceFile(payload) {
+  if (!payload || !payload.courseId || !payload.key) throw new Error('news_not_found');
+  var src = getNewsSources({ courseId: payload.courseId });
+  var it = src.items.filter(function (x) { return x.key === payload.key; })[0];
+  if (!it || !it.usable) throw new Error('news_not_found');
+  var fileId = '';
+  if (it.key.indexOf('lf:') === 0) fileId = it.key.slice(3);
+  else if (it.key.indexOf('mt:') === 0) {
+    var m = listMaterials({ courseId: payload.courseId }).filter(function (x) { return x.id === it.key.slice(3); })[0];
+    fileId = m ? m.fileId : '';
+  }
+  if (!fileId) throw new Error('news_not_found');
+  var file = DriveApp.getFileById(fileId);
+  if (newsFileExt_(file.getName()) !== 'pdf') throw new Error('unsupported_file_type');
+  var bytes = file.getBlob().getBytes();
+  if (bytes.length > 30 * 1024 * 1024) throw new Error('pdf_too_large');
+  return { base64: Utilities.base64Encode(bytes), fileName: file.getName() };
 }
 
 /**
@@ -4161,8 +4199,10 @@ function prepareNewsInput(payload, user) {
     sources.push(rec);
     if (!it.usable) { rec.reason = it.reason; return; }
     var raw = '';
+    var clientText = payload.clientTexts && typeof payload.clientTexts[k] === 'string' ? payload.clientTexts[k].slice(0, 200000) : '';
     try {
-      if (k.indexOf('lf:') === 0) raw = newsExtractFileText_(k.slice(3));
+      if (clientText && /\.pdf$/i.test(it.label.replace(/（[^）]*）$/, ''))) raw = clientText; // 画面で読み取った PDF の文字(この後、名簿の確認と伏せ字をする)
+      else if (k.indexOf('lf:') === 0) raw = newsExtractFileText_(k.slice(3));
       else if (k.indexOf('mt:') === 0) raw = newsExtractFileText_(materialsById[k.slice(3)].fileId);
       else if (k.indexOf('rp:') === 0) {
         var r = reportsById[k.slice(3)];
