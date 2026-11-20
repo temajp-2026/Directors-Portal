@@ -213,7 +213,7 @@
           <button type="button" class="btn btn-outline" id="btnPickFile">ファイルを選択</button>
           <span class="file-picker-name" id="lec-fileName">選択されていません</span>
         </div>
-        <div class="field-hint">1ファイルあたり20MBまで。PDF・PowerPoint・Word・画像など、形式は問いません。</div>
+        <div class="field-hint">1ファイルあたり30MBまで。PDF・PowerPoint・Word・画像など、形式は問いません。</div>
       </div>
       <div class="submit-row">
         <button type="button" class="btn btn-primary" id="btnSubmit">この資料を提出する</button>
@@ -236,7 +236,7 @@
   'use strict';
 
   var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxOkLQhgds7ULE2GU3lf_oAUcQXz-ZdGeNp8E7SekFzDpN6DiReXhIczR43H-B95a-0nA/exec';
-  var MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB(Apps Scriptの受信上限に対する安全マージン)
+  var MAX_FILE_BYTES = 30 * 1024 * 1024; // 30MB(8MBを超えるファイルは分けて送る。2026-11-20 20MB→30MB)
   var NAME_STORAGE_KEY = 'temaLecturerName';
 
   var courseId = null;
@@ -347,7 +347,7 @@
       selectedFile = null;
       $('lec-fileName').textContent = '選択されていません';
       $('lec-fileName').classList.remove('selected');
-      showToast('ファイルサイズが大きすぎます(20MBまで)。分割するか、担当理事にご相談ください。');
+      showToast('ファイルサイズが大きすぎます(30MBまで)。分割するか、担当理事にご相談ください。');
       return;
     }
     selectedFile = file;
@@ -360,6 +360,47 @@
     $('lec-file').value = '';
     $('lec-fileName').textContent = '選択されていません';
     $('lec-fileName').classList.remove('selected');
+  }
+
+
+  /**
+   * 大きいファイルを4MBずつに分けて送る(1回の通信で大きなファイルを送ると失敗しやすいため)。
+   * begin(サーバーが送り先を用意) → putUploadChunk をくり返す → finish(登録)。onProgress(送った割合 0〜1)
+   */
+  var CHUNKED_UPLOAD_THRESHOLD = 8 * 1024 * 1024; // これより大きいファイルは分けて送る
+  function readSliceBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1] || ''); };
+      r.onerror = function () { reject(new Error('file_read_failed')); };
+      r.readAsDataURL(blob);
+    });
+  }
+  function uploadInChunks(file, beginAction, beginPayload, finishAction, finishPayload, onProgress) {
+    return callApi(beginAction, beginPayload).then(function (res) {
+      if (!res.ok) return res;
+      var uploadId = res.data.uploadId, size = res.data.chunkSize, offset = 0, tries = 0;
+      function next() {
+        if (onProgress) onProgress(offset / file.size);
+        if (offset >= file.size) {
+          var fp = {}; for (var k in finishPayload) fp[k] = finishPayload[k];
+          fp.uploadId = uploadId;
+          return callApi(finishAction, fp);
+        }
+        return readSliceBase64(file.slice(offset, Math.min(offset + size, file.size))).then(function (b64) {
+          return callApi('putUploadChunk', { uploadId: uploadId, offset: offset, base64: b64 });
+        }).then(function (r) {
+          if (r.ok) { offset = r.data.done ? file.size : r.data.offset; tries = 0; return next(); }
+          var m = /^upload_offset_mismatch:(\d+)$/.exec(String(r.error || ''));
+          if (m && tries < 3) { tries++; offset = Number(m[1]); return next(); } // 前の通信は届いていた。続きから送る
+          return r;
+        }, function (err) {
+          if (tries < 2) { tries++; return new Promise(function (ok) { setTimeout(ok, 2000); }).then(next); } // 通信の失敗は2回までやり直す
+          throw err;
+        });
+      }
+      return next();
+    });
   }
 
   function submitMaterial() {
@@ -380,17 +421,26 @@
       btn.textContent = 'この資料を提出する';
     }
 
-    var reader = new FileReader();
-    reader.onload = function () {
-      var base64 = String(reader.result).split(',')[1] || '';
-      callApi('uploadMaterialLecturer', {
-        courseId: courseId,
-        lecturerName: name,
-        note: $('lec-note').value.trim(),
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        base64Data: base64
-      }).then(function (res) {
+    var noteText = $('lec-note').value.trim();
+    var sending;
+    if (file.size > CHUNKED_UPLOAD_THRESHOLD) {
+      sending = uploadInChunks(file, 'beginMaterialLecturerUpload',
+        { courseId: courseId, fileName: file.name, mimeType: file.type || 'application/octet-stream', size: file.size },
+        'finishMaterialLecturerUpload', { lecturerName: name, note: noteText },
+        function (p) { btn.textContent = '送信中…（' + Math.round(p * 100) + '%）'; });
+    } else {
+      sending = readSliceBase64(file).then(function (base64) {
+        return callApi('uploadMaterialLecturer', {
+          courseId: courseId,
+          lecturerName: name,
+          note: noteText,
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          base64Data: base64
+        });
+      });
+    }
+    sending.then(function (res) {
         if (!res.ok) {
           // サーバーからの日本語の案内(ファイルの種類・大きさ・件数の上限など)はそのまま表示する
           var err = String(res.error || '');
@@ -405,15 +455,10 @@
         note.classList.remove('hidden');
         $('lec-note').value = '';
         resetFileSelection();
-      }).catch(function () {
-        showToast('提出に失敗しました。通信環境をご確認のうえ、再度お試しください。');
+      }).catch(function (e) {
+        showToast(e && e.message === 'file_read_failed' ? 'ファイルを読み込めませんでした。別のファイルでお試しください。'
+          : '提出に失敗しました。通信環境をご確認のうえ、再度お試しください。');
       }).then(restoreButton);
-    };
-    reader.onerror = function () {
-      restoreButton();
-      showToast('ファイルを読み込めませんでした。別のファイルでお試しください。');
-    };
-    reader.readAsDataURL(file);
   }
 
   var FONT_SIZE_KEY = 'temaFontSizePref';

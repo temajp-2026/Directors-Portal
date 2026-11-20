@@ -131,6 +131,17 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 月次PDFの並び順・添付資料のページ差し込み】新しいシートや列の追加はありません。
+ *   - 担当科の並び：ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)。
+ *   - 添付資料(PDF・Word・Excel・PowerPoint)を、リンクではなくページとして巻末に差し込む。
+ *     PDF の結合は画面(reports.html、pdf-lib)で行い、できたPDFを分割アップロードで保存し直す
+ *     (getMonthlyPdfPart / beginMonthlyPdfUpload / finishMonthlyPdfUpload)。Office のファイルは
+ *     サーバーで Google 形式に変換してから PDF にする。差し込めなかったときは、今まで通りリンクのPDFが残る。
+ * ・【2026-11-20 講師資料の上限を30MBに】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
+ *   - 講師用リンクの「資料の提出」(20MB→30MB)と、講座進捗の「④ 講師資料」(15MB→30MB)。
+ *   - 大きいファイル(8MBを超えるもの)は、4MBずつに分けて送り、Google ドライブの「再開可能なアップロード」で1つのファイルにする
+ *     (begin… → putUploadChunk をくり返す → finish…)。1回の通信で大きなファイルを送ると失敗しやすいため。
+ *     8MB以下は今まで通り1回で送る。
  * ・【2026-11-20 TeMA NEWS の画像PDF】新しいシートや列の追加はありません。
  *   - 文字の入っていない(スライドを画像にした) PDF は、画面でページごとの画像にし、1ページずつ Google の OCR で読む
  *     (ocrNewsPageImage)。PDF をまるごと OCR すると「User rate limit exceeded」で失敗することがあるため。
@@ -632,7 +643,7 @@ function handleRequest(e) {
     }
 
     // 講師側(未ログイン)からもアクセスされるアクション。idの推測しづらさ(UUID)で保護している。
-    var PUBLIC_ACTIONS = ['getInvoicePublic', 'submitInvoiceLecturer', 'getCourseMaterialsPublic', 'uploadMaterialLecturer'];
+    var PUBLIC_ACTIONS = ['getInvoicePublic', 'submitInvoiceLecturer', 'getCourseMaterialsPublic', 'uploadMaterialLecturer', 'beginMaterialLecturerUpload', 'putUploadChunk', 'finishMaterialLecturerUpload'];
     var isPublicAction = PUBLIC_ACTIONS.indexOf(action) !== -1;
 
     // 請求書管理簿の機能。AllowedAccountsシートの「請求書アクセス」列に印がある理事のみ許可。
@@ -669,7 +680,7 @@ function handleRequest(e) {
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
     // 例：2人の理事が同じ講座のチェック項目を同時に付けた場合に、片方の変更が消えるのを防ぐ。
     // 時間のかかる処理(PDF一本化・ファイルのアップロード)は、他の人の保存を待たせないよう対象外にする。
-    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'ocrNewsPageImage', 'uploadReportAttachment',
+    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'ocrNewsPageImage', 'putUploadChunk', 'uploadReportAttachment',
       'uploadReportInlineImage', 'uploadMaterialDirector', 'uploadMaterialLecturer'];
     if (!/^(list|get)/.test(action) && LOCK_EXEMPT.indexOf(action) === -1) {
       lock = LockService.getScriptLock();
@@ -872,6 +883,30 @@ function handleRequest(e) {
         break;
       case 'getCourseMaterialsPublic':
         result = getCourseMaterialsPublic(body.payload);
+        break;
+      case 'beginMaterialLecturerUpload':
+        result = beginMaterialLecturerUpload(body.payload);
+        break;
+      case 'putUploadChunk':
+        result = putUploadChunk(body.payload);
+        break;
+      case 'finishMaterialLecturerUpload':
+        result = finishMaterialLecturerUpload(body.payload);
+        break;
+      case 'beginLecturerMaterialUpload':
+        result = beginLecturerMaterialUpload(body.payload, user);
+        break;
+      case 'getMonthlyPdfPart':
+        result = getMonthlyPdfPart(body.payload);
+        break;
+      case 'beginMonthlyPdfUpload':
+        result = beginMonthlyPdfUpload(body.payload, user);
+        break;
+      case 'finishMonthlyPdfUpload':
+        result = finishMonthlyPdfUpload(body.payload, user);
+        break;
+      case 'finishLecturerMaterialUpload':
+        result = finishLecturerMaterialUpload(body.payload, user);
         break;
       case 'uploadMaterialLecturer':
         result = uploadMaterialLecturer(body.payload);
@@ -1779,22 +1814,47 @@ function uploadLecturerMaterial(payload, user) {
   var rowIndex = findCourseRowIndex(sheet, payload.courseId);
   if (rowIndex === -1) throw new Error('course_not_found');
 
-  trashLecturerMaterial_(sheet, rowIndex);
-
   var bytes = Utilities.base64Decode(payload.base64Data);
+  if (bytes.length > LECTURER_MATERIAL_MAX_BYTES) throw new Error('file_too_large');
   var blob = Utilities.newBlob(bytes, mimeType, payload.fileName);
-  var folder = getOrCreateCoursePdfFolder();
-  var file = folder.createFile(blob);
+  var file = getOrCreateCoursePdfFolder().createFile(blob);
+  return setCourseLecturerMaterial_(sheet, rowIndex, file.getId(), payload.fileName, user);
+}
 
-  var fileId = file.getId();
+var LECTURER_MATERIAL_MAX_BYTES = 30 * 1024 * 1024; // ④ 講師資料の上限(2026-11-20 15MB→30MB)
+
+/** 講座の講師資料を、新しいファイルに差し替える(前のファイル・フォルダはゴミ箱へ) */
+function setCourseLecturerMaterial_(sheet, rowIndex, fileId, fileName, user) {
+  trashLecturerMaterial_(sheet, rowIndex);
   var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
-
-  sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).setValues(safeRows_([[
-    fileId, payload.fileName, viewUrl
-  ]]));
+  sheet.getRange(rowIndex, courseCol('lecturerMaterialFileId'), 1, 3).setValues(safeRows_([[fileId, fileName, viewUrl]]));
   sheet.getRange(rowIndex, courseCol('更新日時')).setValue(safeCell_(new Date()));
-  appendLog(user.email, 'uploadLecturerMaterial', payload.fileName || '');
-  return { lecturerMaterialFileId: fileId, lecturerMaterialFileName: payload.fileName, lecturerMaterialUrl: viewUrl };
+  appendLog(user.email, 'uploadLecturerMaterial', fileName || '');
+  return { lecturerMaterialFileId: fileId, lecturerMaterialFileName: fileName, lecturerMaterialUrl: viewUrl };
+}
+
+/** ④ 講師資料の分割アップロードを始める。payload: { courseId, fileName, size } 戻り値：{ uploadId, chunkSize } */
+function beginLecturerMaterialUpload(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var ext = (String(payload.fileName || '').match(/\.([A-Za-z0-9]+)$/) || [])[1];
+  var mimeType = LECTURER_MATERIAL_TYPES[String(ext || '').toLowerCase()];
+  if (!mimeType) throw new Error('unsupported_file_type');
+  var size = Number(payload.size);
+  if (!(size > 0)) throw new Error('no_file');
+  if (size > LECTURER_MATERIAL_MAX_BYTES) throw new Error('file_too_large');
+  var sheet = getCourseSheet();
+  if (findCourseRowIndex(sheet, payload.courseId) === -1) throw new Error('course_not_found');
+  return chunkUploadBegin_({ fileName: safeFileName_(payload.fileName, '講師資料'), mimeType: mimeType, size: size,
+    folderId: getOrCreateCoursePdfFolder().getId(), purpose: 'lecturerMaterial', courseId: String(payload.courseId) });
+}
+
+/** ④ 講師資料の分割アップロードを終え、講座の講師資料に差し替える。payload: { uploadId } */
+function finishLecturerMaterialUpload(payload, user) {
+  var st = chunkUploadTake_(payload && payload.uploadId, 'lecturerMaterial');
+  var sheet = getCourseSheet();
+  var rowIndex = findCourseRowIndex(sheet, st.courseId);
+  if (rowIndex === -1) { chunkUploadTrash_(st.fileId); throw new Error('course_not_found'); }
+  return setCourseLecturerMaterial_(sheet, rowIndex, st.fileId, st.fileName, user);
 }
 
 /** 講座に添付された講師資料PDFを削除する。payload: { courseId } */
@@ -2943,7 +3003,7 @@ function getCourseMaterialsPublic(payload) {
 // (リンクが第三者に渡った場合に、プログラム等の不審なファイルを置かれるのを防ぐため)。
 var LECTURER_UPLOAD_EXTENSIONS = ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'key', 'pages', 'numbers', 'txt', 'csv',
   'jpg', 'jpeg', 'png', 'gif', 'heic', 'heif', 'webp', 'mp4', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'zip'];
-var LECTURER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;   // 20MB(画面側の上限と同じ)
+var LECTURER_UPLOAD_MAX_BYTES = 30 * 1024 * 1024;   // 30MB(画面側の上限と同じ。2026-11-20 20MB→30MB。8MBを超えるものは分割して送る)
 var LECTURER_UPLOAD_DAILY_LIMIT = 30;               // 1講座あたり1日30件まで
 
 /** ファイル名から、フォルダ区切りや制御文字など不要な文字を除き、長さを制限する */
@@ -2968,34 +3028,154 @@ function uploadMaterialLecturer(payload) {
     throw new Error('このファイルの種類は提出できません。PDF・Word・Excel・PowerPoint・画像・動画などのファイルでお送りください。');
   }
   if (payload.base64Data.length > Math.ceil(LECTURER_UPLOAD_MAX_BYTES / 3) * 4 + 4) {
-    throw new Error('ファイルが大きすぎます(20MBまで)。');
+    throw new Error('ファイルが大きすぎます(30MBまで)。');
   }
-  // 1講座あたりの1日の提出件数を制限する(いたずらによる大量アップロード対策)
+  countLecturerUpload_(courseId);
+
+  var bytes = Utilities.base64Decode(payload.base64Data);
+  if (bytes.length > LECTURER_UPLOAD_MAX_BYTES) throw new Error('ファイルが大きすぎます(30MBまで)。');
+  var blob = Utilities.newBlob(bytes, publicText_(payload.mimeType, 100) || 'application/octet-stream', fileName);
+  var file = getOrCreateMaterialsFolder_().createFile(blob);
+  return registerLecturerMaterial_(course, courseId, file.getId(), fileName, payload);
+}
+
+/** 1講座あたりの1日の提出件数を数え、上限を超えたら止める(いたずらによる大量アップロード対策) */
+function countLecturerUpload_(courseId) {
   var cache = CacheService.getScriptCache();
   var countKey = 'lecup_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd') + '_' + courseId;
   var count = Number(cache.get(countKey) || 0);
   if (count >= LECTURER_UPLOAD_DAILY_LIMIT) throw new Error('本日の提出件数の上限に達しました。明日以降に再度お試しいただくか、担当理事にご連絡ください。');
   cache.put(countKey, String(count + 1), 86400);
+}
 
-  var bytes = Utilities.base64Decode(payload.base64Data);
-  if (bytes.length > LECTURER_UPLOAD_MAX_BYTES) throw new Error('ファイルが大きすぎます(20MBまで)。');
-  var blob = Utilities.newBlob(bytes, publicText_(payload.mimeType, 100) || 'application/octet-stream', fileName);
-  var folder = getOrCreateMaterialsFolder_();
-  var file = folder.createFile(blob);
-
+/** 講師が提出したファイルを資料庫に登録する */
+function registerLecturerMaterial_(course, courseId, fileId, fileName, payload) {
   var sheet = getMaterialSheet();
   var id = Utilities.getUuid();
   var now = new Date();
   var obj = {
     id: id, courseId: courseId, department: course.department || '', courseName: course.name || '',
     category: '講師提出資料', uploaderRole: '講師', uploaderName: publicText_(payload.lecturerName, 100).trim() || '(未記入)', note: publicText_(payload.note, 1000),
-    fileId: file.getId(), fileName: fileName,
-    fileUrl: 'https://drive.google.com/file/d/' + file.getId() + '/view', mimeType: publicText_(payload.mimeType, 100),
+    fileId: fileId, fileName: fileName,
+    fileUrl: 'https://drive.google.com/file/d/' + fileId + '/view', mimeType: publicText_(payload.mimeType, 100),
     status: '有効', createdAt: now, updatedAt: now, deletedBy: '', deletedAt: ''
   };
   sheet.appendRow(safeRow_(MATERIAL_HEADERS.map(function (h) { return obj[h]; })));
   appendLog('(講師・未ログイン)', 'uploadMaterialLecturer', (course.name || '') + '：' + fileName);
   return getCourseMaterialsPublic({ courseId: courseId });
+}
+
+/** 講師の提出を確かめる(講座・中止でないか・形式・大きさ)。戻り値：{ course, courseId, fileName } */
+function checkLecturerUpload_(payload, size) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var courseId = String(payload.courseId).trim();
+  var courseSheet = getCourseSheet();
+  var courseRowIndex = findCourseRowIndex(courseSheet, courseId);
+  if (courseRowIndex === -1) throw new Error('course_not_found');
+  var course = courseRowToObject(courseSheet.getRange(courseRowIndex, 1, 1, COURSE_HEADERS.length).getValues()[0]);
+  if (course.status === '中止') throw new Error('中止になった講座のため、資料を受け付けていません。');
+  var fileName = safeFileName_(payload.fileName, '資料');
+  var ext = (fileName.match(/\.([A-Za-z0-9]+)$/) || [])[1];
+  if (!ext || LECTURER_UPLOAD_EXTENSIONS.indexOf(ext.toLowerCase()) === -1) {
+    throw new Error('このファイルの種類は提出できません。PDF・Word・Excel・PowerPoint・画像・動画などのファイルでお送りください。');
+  }
+  if (!(size > 0)) throw new Error('no_file');
+  if (size > LECTURER_UPLOAD_MAX_BYTES) throw new Error('ファイルが大きすぎます(30MBまで)。');
+  return { course: course, courseId: courseId, fileName: fileName };
+}
+
+/** 講師の提出(大きいファイル)の分割アップロードを始める。payload: { courseId, fileName, mimeType, size } */
+function beginMaterialLecturerUpload(payload) {
+  var size = Number(payload && payload.size);
+  var chk = checkLecturerUpload_(payload, size);
+  countLecturerUpload_(chk.courseId);
+  var mime = String(payload.mimeType || '');
+  if (!/^[A-Za-z0-9.+\-]+\/[A-Za-z0-9.+\-]+$/.test(mime) || mime.length > 100) mime = 'application/octet-stream';
+  return chunkUploadBegin_({ fileName: chk.fileName, mimeType: mime, size: size,
+    folderId: getOrCreateMaterialsFolder_().getId(), purpose: 'lecturerSubmit', courseId: chk.courseId });
+}
+
+/** 講師の提出の分割アップロードを終え、資料庫に登録する。payload: { uploadId, lecturerName, note } */
+function finishMaterialLecturerUpload(payload) {
+  var st = chunkUploadTake_(payload && payload.uploadId, 'lecturerSubmit');
+  var courseSheet = getCourseSheet();
+  var rowIndex = findCourseRowIndex(courseSheet, st.courseId);
+  if (rowIndex === -1) { chunkUploadTrash_(st.fileId); throw new Error('course_not_found'); }
+  var course = courseRowToObject(courseSheet.getRange(rowIndex, 1, 1, COURSE_HEADERS.length).getValues()[0]);
+  return registerLecturerMaterial_(course, st.courseId, st.fileId, st.fileName,
+    { lecturerName: payload.lecturerName, note: payload.note, mimeType: st.mimeType });
+}
+
+// ---- 大きいファイルの分割アップロード(2026-11-20) ----
+// Google ドライブの「再開可能なアップロード」を使う。送り先の URL(合言葉のようなもの)は画面に渡さず、
+// サーバーのキャッシュにだけ置く。画面には推測できない uploadId だけを渡す。
+var CHUNK_UPLOAD_SIZE = 4 * 1024 * 1024; // 1回に送る大きさ(256KB の倍数にする決まりがある)
+
+function chunkUploadBegin_(o) {
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
+    method: 'post', contentType: 'application/json; charset=UTF-8',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': o.mimeType, 'X-Upload-Content-Length': String(o.size) },
+    payload: JSON.stringify({ name: o.fileName, parents: [o.folderId], mimeType: o.mimeType }),
+    muteHttpExceptions: true
+  });
+  var loc = res.getHeaders()['Location'] || res.getHeaders()['location'];
+  if (res.getResponseCode() !== 200 || !loc) throw new Error('upload_begin_failed_' + res.getResponseCode());
+  var uploadId = Utilities.getUuid();
+  var st = { url: loc, size: o.size, offset: 0, purpose: o.purpose, courseId: o.courseId || '', extra: o.extra || '', fileName: o.fileName, mimeType: o.mimeType, fileId: '' };
+  CacheService.getScriptCache().put('chunkup_' + uploadId, JSON.stringify(st), 21600);
+  return { uploadId: uploadId, chunkSize: CHUNK_UPLOAD_SIZE };
+}
+
+/** 分けたファイルの一部を送る。payload: { uploadId, offset, base64 } 戻り値：{ offset, done } */
+function putUploadChunk(payload) {
+  var id = String(payload && payload.uploadId || '');
+  if (!/^[0-9a-f\-]{36}$/.test(id)) throw new Error('upload_not_found');
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get('chunkup_' + id);
+  if (!raw) throw new Error('upload_not_found');
+  var st = JSON.parse(raw);
+  if (st.fileId) return { offset: st.size, done: true };
+  var offset = Number(payload.offset);
+  if (offset !== st.offset) throw new Error('upload_offset_mismatch:' + st.offset); // 前の通信が届いていた場合、画面はここから続ける
+  var b64 = typeof payload.base64 === 'string' ? payload.base64 : '';
+  if (!b64 || b64.length > Math.ceil(CHUNK_UPLOAD_SIZE / 3) * 4 + 4) throw new Error('upload_chunk_invalid');
+  var bytes = Utilities.base64Decode(b64);
+  var end = offset + bytes.length;
+  if (!bytes.length || end > st.size || (end < st.size && bytes.length % (256 * 1024) !== 0)) throw new Error('upload_chunk_invalid');
+  var res = UrlFetchApp.fetch(st.url, {
+    method: 'put', contentType: st.mimeType, payload: bytes,
+    headers: { 'Content-Range': 'bytes ' + offset + '-' + (end - 1) + '/' + st.size },
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code === 308) {
+    st.offset = end;
+  } else if (code === 200 || code === 201) {
+    st.offset = st.size;
+    st.fileId = JSON.parse(res.getContentText()).id;
+  } else {
+    throw new Error('upload_chunk_failed_' + code);
+  }
+  cache.put('chunkup_' + id, JSON.stringify(st), 21600);
+  return { offset: st.offset, done: !!st.fileId };
+}
+
+/** 送り終わったアップロードを受け取る(1回だけ)。戻り値：保存した状態({ fileId, fileName, courseId, mimeType }) */
+function chunkUploadTake_(uploadId, purpose) {
+  var id = String(uploadId || '');
+  if (!/^[0-9a-f\-]{36}$/.test(id)) throw new Error('upload_not_found');
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get('chunkup_' + id);
+  if (!raw) throw new Error('upload_not_found');
+  var st = JSON.parse(raw);
+  if (st.purpose !== purpose) throw new Error('upload_not_found');
+  if (!st.fileId) throw new Error('upload_incomplete');
+  cache.remove('chunkup_' + id);
+  return st;
+}
+
+function chunkUploadTrash_(fileId) {
+  try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
 }
 
 /** ===== 月次報告書 (Reports) ===== */
@@ -3329,6 +3509,89 @@ function replaceInlineImagePlaceholders_(text) {
   return htmlParts.join('');
 }
 
+/** 月次PDFでの担当科の並び順(小さいほど前)。全角・半角の違いはそろえてから見る */
+function monthlyDeptOrder_(name) {
+  var n = String(name || '').normalize('NFKC').replace(/\s/g, '');
+  if (/ベーシック/.test(n) && /(1年|一年)/.test(n)) return 1;
+  if (/ベーシック/.test(n) && /(2年|二年)/.test(n)) return 2;
+  if (/ベーシック/.test(n)) return 3;
+  if (/スキルアップ/.test(n)) return 4;
+  if (/^CA|CA会|CA関係/i.test(n)) return 5;
+  if (/店舗スタッフ/.test(n)) return 6;
+  return 9;
+}
+
+// 巻末にページとして差し込める添付資料の形式(Office は Google 形式に変換してから PDF にする)
+var MONTHLY_APPENDIX_TYPES = { pdf: 'pdf', doc: 'office', docx: 'office', xls: 'office', xlsx: 'office', ppt: 'office', pptx: 'office' };
+var MONTHLY_PART_MAX_BYTES = 30 * 1024 * 1024;
+function monthlyFileExt_(name) { return String((String(name || '').match(/\.([A-Za-z0-9]+)$/) || [])[1] || '').toLowerCase(); }
+
+/** その月度の月次PDF(作ったばかりの、添付を差し込む前のもの)か確かめる */
+function checkMonthlyBasePdf_(month, fileId) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) throw new Error('month_required');
+  var file;
+  try { file = DriveApp.getFileById(String(fileId || '')); } catch (e) { throw new Error('file_not_found'); }
+  var folderId = getOrCreateReportFolder_().getId(), parents = file.getParents(), ok = false;
+  while (parents.hasNext()) { if (parents.next().getId() === folderId) { ok = true; break; } }
+  if (!ok || file.isTrashed() || file.getName() !== month + '月度報告書.pdf') throw new Error('file_not_found');
+  return file;
+}
+
+/**
+ * 月次PDFを結合するための部品を返す(画面で結合する)。payload: { month, fileId, base }
+ * base が true：作ったばかりの月次PDF。それ以外：その月度の提出済み報告書の添付資料を PDF にしたもの。
+ * 戻り値：{ base64 }
+ */
+function getMonthlyPdfPart(payload) {
+  if (!payload) throw new Error('file_not_found');
+  if (payload.base) {
+    var bytes0 = checkMonthlyBasePdf_(payload.month, payload.fileId).getBlob().getBytes();
+    if (bytes0.length > MONTHLY_PART_MAX_BYTES) throw new Error('file_too_large');
+    return { base64: Utilities.base64Encode(bytes0) };
+  }
+  var month = String(payload.month || ''), fileId = String(payload.fileId || '');
+  var att = null;
+  listReports({ month: month }).forEach(function (r) {
+    if (r.status !== '提出済み') return;
+    (r.attachments || []).forEach(function (a) { if (a && a.fileId === fileId) att = a; });
+  });
+  if (!att) throw new Error('file_not_found');
+  var type = MONTHLY_APPENDIX_TYPES[monthlyFileExt_(att.fileName)];
+  if (!type) throw new Error('unsupported_file_type');
+  var file = DriveApp.getFileById(fileId);
+  if (type === 'pdf') {
+    var bytes = file.getBlob().getBytes();
+    if (bytes.length > MONTHLY_PART_MAX_BYTES) throw new Error('file_too_large');
+    return { base64: Utilities.base64Encode(bytes) };
+  }
+  var tempId = null;
+  try {
+    tempId = Drive.Files.insert({ title: 'MONTHLY_TEMP_' + Utilities.getUuid() }, file.getBlob(), { convert: true }).id;
+    var pdf = DriveApp.getFileById(tempId).getAs('application/pdf').getBytes();
+    if (pdf.length > MONTHLY_PART_MAX_BYTES) throw new Error('file_too_large');
+    return { base64: Utilities.base64Encode(pdf) };
+  } finally {
+    if (tempId) { try { Drive.Files.remove(tempId); } catch (e) {} }
+  }
+}
+
+/** 添付資料を差し込んだ月次PDFの保存を始める(分割アップロード)。payload: { month, baseFileId, size } */
+function beginMonthlyPdfUpload(payload, user) {
+  var base = checkMonthlyBasePdf_(payload && payload.month, payload && payload.baseFileId);
+  var size = Number(payload.size);
+  if (!(size > 0) || size > 200 * 1024 * 1024) throw new Error('file_too_large');
+  return chunkUploadBegin_({ fileName: payload.month + '月度報告書.pdf', mimeType: 'application/pdf', size: size,
+    folderId: getOrCreateReportFolder_().getId(), purpose: 'monthlyPdf', extra: base.getId() });
+}
+
+/** 添付資料を差し込んだ月次PDFを保存し終える(差し込む前のPDFはゴミ箱へ)。payload: { uploadId } 戻り値：{ fileId, url } */
+function finishMonthlyPdfUpload(payload, user) {
+  var st = chunkUploadTake_(payload && payload.uploadId, 'monthlyPdf');
+  try { DriveApp.getFileById(st.extra).setTrashed(true); } catch (e) {}
+  appendLog(user.email, 'compileMonthlyReportsPdf', st.fileName + '(添付資料を差し込み)');
+  return { fileId: st.fileId, url: 'https://drive.google.com/file/d/' + st.fileId + '/view' };
+}
+
 /**
  * 指定した月度の「提出済み」報告書をすべてまとめて1つのPDFにする(手動ボタンで実行)。
  * HTML→Googleドキュメント変換(convert:true)→PDFエクスポートの流れで作成する
@@ -3340,7 +3603,12 @@ function compileMonthlyReportsPdf(payload, user) {
   if (!month) throw new Error('month_required');
   var reports = listReports({ month: month }).filter(function (r) { return r.status === '提出済み'; });
   if (!reports.length) throw new Error('no_submitted_reports');
-  reports.sort(function (a, b) { return String(a.department).localeCompare(String(b.department), 'ja'); });
+  // 担当科の並び(2026-11-20)：ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)
+  reports.sort(function (a, b) {
+    var d = monthlyDeptOrder_(a.department) - monthlyDeptOrder_(b.department);
+    return d || String(a.department).localeCompare(String(b.department), 'ja');
+  });
+  var appendix = []; // 巻末にページとして差し込む添付資料(画面で結合する)
 
   var monthLabelMatch = String(month).match(/^(\d{4})-(\d{2})/);
   var monthLabel = monthLabelMatch ? (Number(monthLabelMatch[1]) + '年' + Number(monthLabelMatch[2]) + '月') : escapeHtml_(month);
@@ -3480,9 +3748,15 @@ function compileMonthlyReportsPdf(payload, user) {
       htmlParts.push('<div style="page-break-inside:avoid;">');
       htmlParts.push(sectionHeading_('04', '添付資料'));
       otherAttachments.forEach(function (a) {
+        // PDF・Office のファイルは巻末にページとして差し込む(番号を付ける)。それ以外はリンクだけ
+        var no = '';
+        if (a.fileId && MONTHLY_APPENDIX_TYPES[monthlyFileExt_(a.fileName)]) {
+          appendix.push({ no: appendix.length + 1, fileId: a.fileId, fileName: a.fileName, department: r.department });
+          no = '<span style="color:' + INK_SECONDARY + '; font-size:9pt; white-space:nowrap;">巻末の添付資料 ' + appendix.length + '</span>　';
+        }
         htmlParts.push(
           '<div style="padding:6pt 0; border-bottom:1px solid ' + HAIRLINE + '; font-size:10pt;">' +
-            '<span style="color:' + INK_PRIMARY + '; word-break:break-word; overflow-wrap:anywhere;">' + escapeHtml_(a.fileName) + '</span>　' +
+            '<span style="color:' + INK_PRIMARY + '; word-break:break-word; overflow-wrap:anywhere;">' + escapeHtml_(a.fileName) + '</span>　' + no +
             '<a href="' + escapeHtml_(a.url) + '" style="color:' + ACCENT + '; font-size:9.5pt; text-decoration:underline; white-space:nowrap;">ファイルを開く</a>' +
           '</div>'
         );
@@ -3499,6 +3773,21 @@ function compileMonthlyReportsPdf(payload, user) {
       htmlParts.push('<div style="text-align:center;">' + imageTagForFileId_(a.fileId, 'max-width:100%; max-height:23cm; height:auto;') + '</div>');
     });
   });
+  if (appendix.length) {
+    // 巻末の添付資料の目次(この後ろに、画面で各ファイルのページを差し込む)
+    htmlParts.push('<div style="page-break-before:always;"></div>');
+    htmlParts.push('<div style="font-size:16pt; font-weight:bold; color:' + INK_PRIMARY + '; margin-bottom:4pt;">巻末の添付資料</div>');
+    htmlParts.push('<div style="font-size:9pt; color:' + INK_SECONDARY + '; margin-bottom:8pt;">次のページから、各担当科の添付資料を番号の順に載せています（各資料の1ページ目の右上に ATTACHMENT と番号を入れています）。</div>');
+    htmlParts.push('<table width="100%" style="border-collapse:collapse;">');
+    appendix.forEach(function (x) {
+      htmlParts.push('<tr>' +
+        '<td width="12%" style="width:12%; border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt; font-weight:bold; color:' + ACCENT + '; white-space:nowrap;">' + x.no + '</td>' +
+        '<td width="30%" style="width:30%; border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt;">' + escapeHtml_(x.department) + '</td>' +
+        '<td style="border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt; word-break:break-word; overflow-wrap:anywhere;">' + escapeHtml_(x.fileName) + '</td>' +
+      '</tr>');
+    });
+    htmlParts.push('</table>');
+  }
   var combinedHtml = '<html><body style="font-family: \'Noto Sans JP\', Arial, sans-serif; color:' + INK_PRIMARY + ';">' + htmlParts.join('\n') + '</body></html>';
 
   var tempDocId = null;
@@ -3512,7 +3801,8 @@ function compileMonthlyReportsPdf(payload, user) {
     var pdfFile = folder.createFile(pdfBlob);
     pdfFile.setName(month + '月度報告書.pdf');
     appendLog(user.email, 'compileMonthlyReportsPdf', month);
-    return { fileId: pdfFile.getId(), url: 'https://drive.google.com/file/d/' + pdfFile.getId() + '/view', departmentCount: reports.length };
+    return { fileId: pdfFile.getId(), url: 'https://drive.google.com/file/d/' + pdfFile.getId() + '/view', departmentCount: reports.length,
+      appendix: appendix.map(function (x) { return { no: x.no, fileId: x.fileId, fileName: x.fileName, department: x.department }; }) };
   } catch (err) {
     // 【要設定】Drive API(高度なサービス)が未設定の場合もここでエラーになる(ocrCoursePdfと同様)。
     throw new Error('compile_failed:' + (err && err.message ? err.message : String(err)));

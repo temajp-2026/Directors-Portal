@@ -33,7 +33,7 @@ NPO法人 日本繊維商品めんてなんす研究会（TeMA）の理事向け
 | 講師依頼_請書兼請求書.html | 旧試作。未使用 | － |
 
 ## 共通の実装ルール（画面）
-- 各HTMLは1ファイル完結（CSS・JSを内包）。外部ライブラリは極力使わない（pdf.js はSRI付きでjsDelivrから遅延読み込み）。
+- 各HTMLは1ファイル完結（CSS・JSを内包）。外部ライブラリは極力使わない（pdf.js〈news.html〉と pdf-lib〈reports.html〉はSRI付きでjsDelivrから遅延読み込み）。
 - API呼び出しは `callApi(action, payload)`：`POST` / `Content-Type: text/plain`（CORSプリフライト回避）、`{action, idToken, payload}`。
   `list`/`get` 始まりは通信失敗時に1回だけ自動再試行。`unauthorized` でログイン画面へ戻す。
 - ログイン情報：`localStorage['riji_portal_auth']`（`{idToken, user, savedAt}`、6時間で失効。全タブ共有）。

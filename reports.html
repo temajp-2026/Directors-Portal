@@ -992,12 +992,142 @@
   }
 
   /* ---------- 月次PDF作成 ---------- */
+  // 添付資料(PDF・Word・Excel・PowerPoint)は、サーバーでPDFにしたものを、この画面で巻末にページとして結合する(pdf-lib)。
+  // 結合できなかったときは、添付資料がリンクのままのPDFを開く。
+  var PDFLIB_URL = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+  var PDFLIB_SRI = 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI';
+  var pdfLibPromise = null;
+  function loadPdfLib() {
+    if (window.PDFLib) return Promise.resolve(window.PDFLib);
+    if (pdfLibPromise) return pdfLibPromise;
+    pdfLibPromise = new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = PDFLIB_URL; sc.integrity = PDFLIB_SRI; sc.crossOrigin = 'anonymous';
+      sc.onload = function () { window.PDFLib ? resolve(window.PDFLib) : reject(new Error('pdflib_not_loaded')); };
+      sc.onerror = function () { pdfLibPromise = null; reject(new Error('pdflib_not_loaded')); };
+      document.head.appendChild(sc);
+    });
+    return pdfLibPromise;
+  }
+  function base64ToBytes(b64) {
+    var bin = atob(b64 || ''), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function readSliceBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1] || ''); };
+      r.onerror = function () { reject(new Error('file_read_failed')); };
+      r.readAsDataURL(blob);
+    });
+  }
+  /** 大きいファイルを分けて送る(begin → putUploadChunk をくり返す → finish) */
+  function uploadInChunks(file, beginAction, beginPayload, finishAction, finishPayload, onProgress) {
+    return callApi(beginAction, beginPayload).then(function (res) {
+      if (!res.ok) return res;
+      var uploadId = res.data.uploadId, size = res.data.chunkSize, offset = 0, tries = 0;
+      function next() {
+        if (onProgress) onProgress(offset / file.size);
+        if (offset >= file.size) {
+          var fp = {}; for (var k in finishPayload) fp[k] = finishPayload[k];
+          fp.uploadId = uploadId;
+          return callApi(finishAction, fp);
+        }
+        return readSliceBase64(file.slice(offset, Math.min(offset + size, file.size))).then(function (b64) {
+          return callApi('putUploadChunk', { uploadId: uploadId, offset: offset, base64: b64 });
+        }).then(function (r) {
+          if (r.ok) { offset = r.data.done ? file.size : r.data.offset; tries = 0; return next(); }
+          var m = /^upload_offset_mismatch:(\d+)$/.exec(String(r.error || ''));
+          if (m && tries < 3) { tries++; offset = Number(m[1]); return next(); }
+          return r;
+        }, function (err) {
+          if (tries < 2) { tries++; return new Promise(function (ok) { setTimeout(ok, 2000); }).then(next); }
+          throw err;
+        });
+      }
+      return next();
+    });
+  }
+
+  /** 月次PDFの巻末に、添付資料のページを結合して保存し直す。戻り値：{ url, skipped:[ファイル名] } */
+  function mergeMonthlyAppendix(data, setStatus) {
+    var skipped = [];
+    return loadPdfLib().then(function (PDFLib) {
+      setStatus('月次PDFを読み込んでいます…');
+      return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: data.fileId, base: true }).then(function (res) {
+        if (!res.ok) throw new Error(res.error);
+        return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64));
+      }).then(function (out) {
+        var chain = Promise.resolve();
+        data.appendix.forEach(function (x, i) {
+          chain = chain.then(function () {
+            setStatus('添付資料をページとして差し込んでいます…（' + (i + 1) + ' / ' + data.appendix.length + '）');
+            return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: x.fileId }).then(function (res) {
+              if (!res.ok) throw new Error(res.error);
+              return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64), { ignoreEncryption: true });
+            }).then(function (src) {
+              return out.copyPages(src, src.getPageIndices());
+            }).then(function (pages) {
+              if (!pages.length) throw new Error('empty');
+              pages.forEach(function (p) { out.addPage(p); });
+              // 各資料の1ページ目の右上に、番号を入れる(日本語の文字は使えないため英数字)
+              var first = pages[0], sz = first.getSize();
+              first.drawText('ATTACHMENT ' + x.no, { x: sz.width - 120, y: sz.height - 22, size: 10, color: PDFLib.rgb(0.16, 0.47, 0.84) });
+            }).catch(function () { skipped.push(x.fileName); });
+          });
+        });
+        return chain.then(function () {
+          // すべてのページの下に、ページ番号を入れる
+          var all = out.getPages(), n = all.length;
+          all.forEach(function (p, i) {
+            var sz = p.getSize(), label = (i + 1) + ' / ' + n;
+            p.drawText(label, { x: sz.width / 2 - label.length * 2.4, y: 12, size: 8, color: PDFLib.rgb(0.45, 0.45, 0.45) });
+          });
+          setStatus('結合したPDFを保存しています…');
+          return out.save();
+        });
+      }).then(function (bytes) {
+        var blob = new Blob([bytes], { type: 'application/pdf' });
+        return uploadInChunks(blob, 'beginMonthlyPdfUpload', { month: currentMonth, baseFileId: data.fileId, size: blob.size },
+          'finishMonthlyPdfUpload', {}, function (p) { setStatus('結合したPDFを保存しています…（' + Math.round(p * 100) + '%）'); });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(res.error);
+        return { url: res.data.url, skipped: skipped };
+      });
+    });
+  }
+
   function compileMonthlyPdf() {
+    var btn = $('btnCompilePdf'), label = btn.textContent;
+    // 作り終わってから開くと、ブラウザに「ポップアップ」として止められるため、先に窓だけ開いておく
+    var win = window.open('', '_blank');
+    if (win) { try { win.document.title = '月次PDFを作成しています'; win.document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px;">月次PDFを作成しています…（添付資料がある月は数分かかることがあります）</p>'; } catch (e) {} }
+    function setStatus(t) { btn.textContent = t; }
+    function openUrl(url) {
+      if (win && !win.closed) win.location.href = url;
+      else window.open(url, '_blank');
+    }
+    btn.disabled = true;
+    setStatus('月次PDFを作成しています…');
     callApi('compileMonthlyReportsPdf', { month: currentMonth }).then(function (res) {
-      if (!res.ok) { showToast(errorMessage(res.error)); return; }
-      showToast(res.data.departmentCount + '科分のPDFを作成しました');
-      window.open(res.data.url, '_blank');
-    }).catch(function () { showToast('PDFの作成に失敗しました'); });
+      if (!res.ok) { showToast(errorMessage(res.error)); if (win) win.close(); return; }
+      var data = res.data;
+      if (!data.appendix || !data.appendix.length) {
+        showToast(data.departmentCount + '科分のPDFを作成しました');
+        openUrl(data.url);
+        return;
+      }
+      return mergeMonthlyAppendix(data, setStatus).then(function (m) {
+        showToast(data.departmentCount + '科分のPDFを作成しました（添付資料 ' + (data.appendix.length - m.skipped.length) + '件をページとして差し込み）' +
+          (m.skipped.length ? '。差し込めなかった添付資料：' + m.skipped.join('、') + '（PDFの中のリンクから開けます）' : ''));
+        openUrl(m.url);
+      }, function () {
+        showToast('添付資料をページとして差し込めませんでした。添付資料がリンクのままのPDFを開きます');
+        openUrl(data.url);
+      });
+    }).catch(function () { showToast('PDFの作成に失敗しました'); if (win) win.close(); })
+      .then(function () { btn.disabled = false; btn.textContent = label; });
   }
 
   /* ---------- 役員会の設定(年度ごと一括) ---------- */

@@ -2492,6 +2492,46 @@
     htm: 'text/html'
   };
 
+  /**
+   * 大きいファイルを4MBずつに分けて送る(1回の通信で大きなファイルを送ると失敗しやすいため)。
+   * begin(サーバーが送り先を用意) → putUploadChunk をくり返す → finish(登録)。onProgress(送った割合 0〜1)
+   */
+  var CHUNKED_UPLOAD_THRESHOLD = 8 * 1024 * 1024; // これより大きいファイルは分けて送る
+  function readSliceBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1] || ''); };
+      r.onerror = function () { reject(new Error('file_read_failed')); };
+      r.readAsDataURL(blob);
+    });
+  }
+  function uploadInChunks(file, beginAction, beginPayload, finishAction, finishPayload, onProgress) {
+    return callApi(beginAction, beginPayload).then(function (res) {
+      if (!res.ok) return res;
+      var uploadId = res.data.uploadId, size = res.data.chunkSize, offset = 0, tries = 0;
+      function next() {
+        if (onProgress) onProgress(offset / file.size);
+        if (offset >= file.size) {
+          var fp = {}; for (var k in finishPayload) fp[k] = finishPayload[k];
+          fp.uploadId = uploadId;
+          return callApi(finishAction, fp);
+        }
+        return readSliceBase64(file.slice(offset, Math.min(offset + size, file.size))).then(function (b64) {
+          return callApi('putUploadChunk', { uploadId: uploadId, offset: offset, base64: b64 });
+        }).then(function (r) {
+          if (r.ok) { offset = r.data.done ? file.size : r.data.offset; tries = 0; return next(); }
+          var m = /^upload_offset_mismatch:(\d+)$/.exec(String(r.error || ''));
+          if (m && tries < 3) { tries++; offset = Number(m[1]); return next(); } // 前の通信は届いていた。続きから送る
+          return r;
+        }, function (err) {
+          if (tries < 2) { tries++; return new Promise(function (ok) { setTimeout(ok, 2000); }).then(next); } // 通信の失敗は2回までやり直す
+          throw err;
+        });
+      }
+      return next();
+    });
+  }
+
   function uploadLecturerMaterial_() {
     var fileInput = $('pp-materialFile');
     var file = fileInput.files && fileInput.files[0];
@@ -2500,20 +2540,25 @@
     var ext = (String(file.name).match(/\.([A-Za-z0-9]+)$/) || [])[1];
     var mime = LECTURER_MATERIAL_TYPES[String(ext || '').toLowerCase()];
     if (!mime) { showToast('PDF・PowerPoint（.ppt / .pptx）・HTML（.html / .htm）のファイルを選んでください'); fileInput.value = ''; return; }
-    if (file.size > 15 * 1024 * 1024) { showToast('ファイルのサイズが大きすぎます（15MBまで）'); fileInput.value = ''; return; }
+    if (file.size > 30 * 1024 * 1024) { showToast('ファイルのサイズが大きすぎます（30MBまで）'); fileInput.value = ''; return; }
 
     var statusEl = $('ppMaterialUploadStatus');
     statusEl.textContent = 'アップロード中…';
     statusEl.classList.remove('hidden');
 
-    var reader = new FileReader();
-    reader.onload = function () {
-      var base64 = String(reader.result).split(',')[1] || '';
-      callApi('uploadLecturerMaterial', {
-        courseId: activeCourse.id, fileName: file.name, mimeType: mime, base64Data: base64
-      }).then(function (res) {
+    var sending;
+    if (file.size > CHUNKED_UPLOAD_THRESHOLD) {
+      sending = uploadInChunks(file, 'beginLecturerMaterialUpload', { courseId: activeCourse.id, fileName: file.name, size: file.size },
+        'finishLecturerMaterialUpload', {}, function (p) { statusEl.textContent = 'アップロード中…（' + Math.round(p * 100) + '%）'; });
+    } else {
+      sending = readSliceBase64(file).then(function (base64) {
+        return callApi('uploadLecturerMaterial', { courseId: activeCourse.id, fileName: file.name, mimeType: mime, base64Data: base64 });
+      });
+    }
+      sending.then(function (res) {
         if (!res.ok) {
-          showToast(res.error === 'unsupported_file_type' ? 'この形式のファイルはアップロードできません（PDF・PowerPoint・HTMLのみ）' : 'アップロードに失敗しました：' + res.error);
+          showToast(res.error === 'unsupported_file_type' ? 'この形式のファイルはアップロードできません（PDF・PowerPoint・HTMLのみ）'
+            : res.error === 'file_too_large' ? 'ファイルのサイズが大きすぎます（30MBまで）' : 'アップロードに失敗しました：' + res.error);
           statusEl.classList.add('hidden'); return;
         }
         showToast('講師資料をアップロードしました');
@@ -2525,14 +2570,11 @@
           activeCourse = courses.filter(function (c) { return c.id === activeCourse.id; })[0] || activeCourse;
           renderPrepMaterialSection(activeCourse);
         }
-      }).catch(function () {
-        showToast('アップロードに失敗しました');
+      }).catch(function (e) {
+        showToast(e && e.message === 'file_read_failed' ? 'ファイルの読み込みに失敗しました' : 'アップロードに失敗しました');
       }).finally(function () {
         statusEl.classList.add('hidden');
       });
-    };
-    reader.onerror = function () { showToast('ファイルの読み込みに失敗しました'); statusEl.classList.add('hidden'); };
-    reader.readAsDataURL(file);
   }
 
   /** フォルダごとアップロードできる形式。サーバー側(gas/Code.gs の LECTURER_FOLDER_TYPES)と合わせる */
