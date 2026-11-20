@@ -144,6 +144,10 @@
     display: flex; flex-direction: column; gap: 8px;
   }
   .report-card-title { font-size: calc(var(--fs-scale, 1) * 14px); font-weight: 500; color: var(--gw-text); }
+  .report-card.add-card { border-style: dashed; align-items: center; justify-content: center; text-align: center; cursor: pointer; background: transparent; min-height: 150px; color: var(--gw-blue); }
+  .report-card.add-card:hover { background: var(--gw-blue-tint, #e8f0fe); }
+  .report-card.add-card .plus { font-size: 28px; line-height: 1; }
+  .extra-chip { display: inline-block; font-size: calc(var(--fs-scale, 1) * 10.5px); color: var(--gw-text-secondary); border: 1px solid var(--gw-border); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
   .report-card-meta { font-size: calc(var(--fs-scale, 1) * 11px); color: var(--gw-text-secondary); line-height: 1.5; flex: 1; }
   .status-badge { display: inline-block; font-size: calc(var(--fs-scale, 1) * 11px); font-weight: 500; padding: 3px 10px; border-radius: 999px; align-self: flex-start; }
   .status-report-提出済み { background: var(--gw-green-tint); color: var(--gw-green); }
@@ -368,6 +372,7 @@
     <button type="button" class="btn btn-outline btn-small" id="btnReportAttach">＋ ファイルを添付</button>
 
     <div class="modal-actions">
+      <button type="button" class="btn btn-danger-outline hidden" id="btnReportDelete" style="margin-right:auto;">この報告を削除</button>
       <button type="button" class="btn btn-cancel" id="btnReportCancel">閉じる</button>
       <button type="button" class="btn btn-outline" id="btnReportSaveDraft">下書き保存</button>
       <button type="button" class="btn btn-primary" id="btnReportSubmit">提出する</button>
@@ -574,6 +579,7 @@
     empty_report: '本文が空です。本文を入力するか、添付ファイルを追加してから提出してください。',
     sanyaku_access_denied: '三役会の報告書は、名簿の「三役会」に印がある方だけが使えます。',
     sanyaku_reporter_unknown: 'この報告者は「報告者の設定」に登録されていません。画面を再読み込みしてください。',
+    report_not_deletable: '担当科の報告書は削除できません。',
     no_submitted_reports: 'この月度で「提出済み」の報告書がまだありません。',
     report_not_found: '報告書が見つかりませんでした。画面を再読み込みしてください。',
     department_required: '担当科が指定されていません。',
@@ -814,7 +820,13 @@
     var grid = $('reportGrid');
     grid.innerHTML = '';
     // 三役会の報告書は担当科ごとではなく、報告者(三役)ごと
-    var cards = currentKind === '三役会' ? sanyakuReporters.map(function (n) { return { name: n }; }) : departments;
+    var cards = currentKind === '三役会' ? sanyakuReporters.map(function (n) { return { name: n }; }) : departments.slice();
+    if (currentKind === '月次') {
+      // 担当科の一覧にない報告(＋ 報告を追加 で作ったもの)も並べる
+      reports.forEach(function (r) {
+        if (!isDeptName(r.department) && !cards.some(function (c) { return c.name === r.department; })) cards.push({ name: r.department, extra: true });
+      });
+    }
     $('reportEmpty').classList.toggle('hidden', cards.length > 0);
     $('reportEmpty').textContent = currentKind === '三役会'
       ? '三役会の報告者がまだ登録されていません。「報告者の設定」から登録してください。'
@@ -832,9 +844,19 @@
         '<div class="report-card-title">' + escapeHtml(d.name) + '</div>' +
         '<div class="report-card-meta">' + meta + '</div>' +
         '<button type="button" class="btn btn-outline btn-small" style="align-self:flex-start;">編集する</button>';
+      if (d.extra) card.querySelector('.report-card-title').insertAdjacentHTML('beforeend', '<span class="extra-chip">追加の報告</span>');
       card.querySelector('button').addEventListener('click', function () { openReportModal(d.name); });
       grid.appendChild(card);
     });
+    if (currentKind === '月次' && departments.length) {
+      // 担当科とは別に、自由に書く報告を足す
+      var add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'report-card add-card';
+      add.innerHTML = '<span class="plus">＋</span><span>報告を追加</span><span class="report-card-meta" style="flex:0;">担当科とは別に、題名を付けて自由に書く報告（例：事務局からの報告）</span>';
+      add.addEventListener('click', addExtraReport);
+      grid.appendChild(add);
+    }
   }
 
   /* ---------- 報告書編集 ---------- */
@@ -847,16 +869,27 @@
     }).catch(function () { currentDeptCourses = []; });
   }
 
+  function isDeptName(name) { return departments.some(function (d) { return d.name === name; }); }
+  /** 「＋ 報告を追加」：題名を決めて、自由記述の報告を作る */
+  function addExtraReport() {
+    var title = (prompt('報告の題名を入力してください（例：事務局からの報告）') || '').trim().slice(0, 40);
+    if (!title) return;
+    if (isDeptName(title) || reports.some(function (r) { return r.department === title; })) { showToast('同じ題名の報告がすでにあります。別の題名にしてください'); return; }
+    openReportModal(title);
+  }
+
   function openReportModal(deptName) {
     editingDepartment = deptName;
     editingReport = reportForDepartment(deptName);
-    var sanyakuMode = currentKind === '三役会';
-    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + (sanyakuMode ? '三役会の報告書　' + deptName : deptName);
+    // 三役会の報告書と、担当科の一覧にない「追加の報告」は、自由記述(講座開催・課題の欄なし)
+    var sanyakuMode = currentKind === '三役会' || !isDeptName(deptName);
+    $('btnReportDelete').classList.toggle('hidden', !(sanyakuMode && currentKind === '月次' && editingReport && editingReport.id));
+    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + (currentKind === '三役会' ? '三役会の報告書　' + deptName : deptName);
     // 三役会の報告書は自由記述：講座開催・課題の欄は出さない
     $('sectionCourses').classList.toggle('hidden', sanyakuMode);
     $('sectionIssues').classList.toggle('hidden', sanyakuMode);
     $('otherTitle').textContent = sanyakuMode ? '報告内容（自由に書けます）' : 'その他報告内容';
-    $('r-otherContent').placeholder = sanyakuMode ? '三役からの報告を自由にご記入ください。見出しを付けて分けたいときは、下の「＋ 報告を追加」を使います' : 'その他、報告しておきたい内容があればご記入ください';
+    $('r-otherContent').placeholder = sanyakuMode ? '報告を自由にご記入ください。見出しを付けて分けたいときは、下の「＋ 報告を追加（見出し付き）」を使います' : 'その他、報告しておきたい内容があればご記入ください';
     $('reportModalMeta').textContent = editingReport
       ? ('ステータス：' + editingReport.status + '　最終更新：' + (editingReport.updatedBy || '') + '（' + (editingReport.updatedAt || '') + '）')
       : '新規作成（ログインしていれば誰でも編集できます）';
@@ -1588,6 +1621,16 @@
     $('reportModal').addEventListener('click', function (e) { if (e.target.id === 'reportModal') closeReportModal(); });
     $('btnReportCourseAdd').addEventListener('click', function () { addCourseRow(); });
     $('btnReportAttach').addEventListener('click', function () { pendingAttachItemId = ''; $('reportFileInput').click(); });
+    $('btnReportDelete').addEventListener('click', function () {
+      if (!editingReport || !editingReport.id) return;
+      if (!confirm('「' + editingDepartment + '」の報告を削除しますか？（月次PDFにも載らなくなります）')) return;
+      callApi('deleteReport', { id: editingReport.id }).then(function (res) {
+        if (!res.ok) { showToast(errorMessage(res.error)); return; }
+        showToast('削除しました');
+        closeReportModal();
+        loadMonthData();
+      }).catch(function () { showToast('削除に失敗しました'); });
+    });
     $('btnAddOtherItem').addEventListener('click', function () {
       readOtherItems();
       otherItems.push({ id: newItemId(), heading: '', body: '' });

@@ -131,6 +131,9 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 月次報告書に「追加の報告」】担当科の一覧(Departments)にない名前の月次報告書は「追加の報告」として扱い、
+ *     三役会と同じ自由記述(講座開催・課題の欄なし)にする。画面の「＋ 報告を追加」で題名を付けて作る。
+ *     追加の報告は削除できる(deleteReport：状態を「削除済み」にする。担当科の報告書は削除できない)。
  * ・【2026-11-20 三役会の報告書は自由記述】三役会の報告書は担当科ごとではなく、報告者(三役)ごと(担当科の欄に報告者を入れる)。
  *     講座開催・課題の欄は使わず、報告(見出し＋本文＋ファイル)を自由に足していく形。PDFも「報告」「添付資料」だけ。
  *     報告者の一覧は画面の「報告者の設定」で三役会の人が登録する(スクリプト プロパティ sanyakuReporters。
@@ -831,6 +834,9 @@ function handleRequest(e) {
         break;
       case 'uploadReportInlineImage':
         result = uploadReportInlineImage(body.payload, user);
+        break;
+      case 'deleteReport':
+        result = deleteReport(body.payload, user);
         break;
       case 'deleteReportAttachment':
         result = deleteReportAttachment(body.payload, user);
@@ -3414,7 +3420,8 @@ function findReportRowIndex_(sheet, department, month, kind) {
   var depCol = reportCol('department') - 1, monthCol = reportCol('month') - 1, kindCol = reportCol('kind') - 1;
   kind = reportKind_(kind);
   for (var i = 1; i < values.length; i++) {
-    if (values[i][depCol] === department && formatMonthValue_(values[i][monthCol]) === String(month) && reportKind_(values[i][kindCol]) === kind) return i + 1;
+    if (values[i][depCol] === department && formatMonthValue_(values[i][monthCol]) === String(month) && reportKind_(values[i][kindCol]) === kind &&
+        values[i][reportCol('status') - 1] !== '削除済み') return i + 1;
   }
   return -1;
 }
@@ -3475,6 +3482,7 @@ function listReports(payload, user) {
     if (!values[i][0]) continue;
     var obj = reportRowToObject(values[i]);
     if (obj.kind !== kind) continue;
+    if (obj.status === '削除済み') continue;
     if (payload && payload.month && obj.month !== payload.month) continue;
     rows.push(obj);
   }
@@ -3606,6 +3614,22 @@ function uploadReportInlineImage(payload, user) {
   var file = folder.createFile(blob);
   appendLog(user.email, 'uploadReportInlineImage', payload.fileName || '');
   return { fileId: file.getId(), fileName: file.getName(), url: 'https://drive.google.com/file/d/' + file.getId() + '/view' };
+}
+
+/** 追加の報告(担当科の一覧にない月次報告書)・三役会の報告書を削除する(状態を「削除済み」にする)。payload: { id } */
+function deleteReport(payload, user) {
+  var sheet = getReportSheet();
+  var rowIndex = findReportRowIndexById_(sheet, payload && payload.id);
+  if (rowIndex === -1) throw new Error('report_not_found');
+  var kind = assertReportRowAccess_(sheet, rowIndex, user);
+  var dept = sheet.getRange(rowIndex, reportCol('department')).getValue();
+  var isDept = listDepartments().some(function (d) { return d.name === dept; });
+  if (kind === '月次' && isDept) throw new Error('report_not_deletable'); // 担当科の報告書は消さない
+  sheet.getRange(rowIndex, reportCol('status')).setValue(safeCell_('削除済み'));
+  sheet.getRange(rowIndex, reportCol('updatedBy')).setValue(safeCell_(user.name || user.email));
+  sheet.getRange(rowIndex, reportCol('updatedAt')).setValue(safeCell_(new Date()));
+  appendLog(user.email, 'deleteReport', dept);
+  return { id: payload.id };
 }
 
 /** 報告書の添付ファイルを削除する。payload: { reportId, fileId } */
@@ -3807,6 +3831,9 @@ function compileMonthlyReportsPdf(payload, user) {
   if (deptOrder) PropertiesService.getScriptProperties().setProperty(orderKey, JSON.stringify(deptOrder));
   else { try { deptOrder = JSON.parse(PropertiesService.getScriptProperties().getProperty(orderKey) || 'null'); } catch (e) { deptOrder = null; } }
   var reporterOrder = kind === '三役会' ? sanyakuReporters_() : null; // 三役会は、報告者の設定の順
+  var deptNames = listDepartments().map(function (d) { return d.name; });
+  /** 自由記述の報告(三役会、または担当科の一覧にない「追加の報告」)か */
+  function isFreeForm_(r) { return kind === '三役会' || deptNames.indexOf(r.department) === -1; }
   reports.sort(function (a, b) {
     if (deptOrder) {
       var ia = deptOrder.indexOf(a.department), ib = deptOrder.indexOf(b.department);
@@ -3894,8 +3921,9 @@ function compileMonthlyReportsPdf(payload, user) {
 
     // 01 直近の講座開催(開催日／講座名／会場／ZOOM／合計の5列。数字は右揃え、色分けバッジは廃止)
     // 三役会の報告書は自由記述なので、講座開催と課題の欄は載せない(作った部分は捨てる)
+    var freeForm = isFreeForm_(r);
     var keepParts = htmlParts;
-    if (kind === '三役会') htmlParts = [];
+    if (freeForm) htmlParts = [];
     htmlParts.push('<div style="page-break-inside:avoid;">');
     htmlParts.push(sectionHeading_('01', '直近の講座開催'));
     if (r.courses && r.courses.length) {
@@ -3936,7 +3964,7 @@ function compileMonthlyReportsPdf(payload, user) {
     var items = r.otherItems || [];
     var itemIdSet = {}; items.forEach(function (it) { itemIdSet[it.id] = true; });
     htmlParts.push('<div style="page-break-inside:avoid; page-break-after:avoid;">');
-    htmlParts.push(kind === '三役会' ? sectionHeading_('01', '報告') : sectionHeading_('02', 'その他報告'));
+    htmlParts.push(freeForm ? sectionHeading_('01', '報告') : sectionHeading_('02', 'その他報告'));
     htmlParts.push('</div>');
     if (r.otherContent || !items.length) {
       htmlParts.push(
@@ -3972,7 +4000,7 @@ function compileMonthlyReportsPdf(payload, user) {
     });
 
     keepParts = htmlParts;
-    if (kind === '三役会') htmlParts = [];
+    if (freeForm) htmlParts = [];
     // 03 課題・改善点(警告色は使わず、薄い背景+左3pxアクセント罫線の通常項目として扱う)。
     // 【2026-09 最終調整】内容が空の場合はボックス自体を出さず、「特記事項なし」という
     // 控えめな案内文のみを表示する(背景・左罫線は内容がある場合のみ使用)。
@@ -4002,7 +4030,7 @@ function compileMonthlyReportsPdf(payload, user) {
     var otherAttachments = deptAttachments.filter(function (a) { return !isImageFileName_(a.fileName); });
     if (otherAttachments.length) {
       htmlParts.push('<div style="page-break-inside:avoid;">');
-      htmlParts.push(sectionHeading_(kind === '三役会' ? '02' : '04', '添付資料'));
+      htmlParts.push(sectionHeading_(freeForm ? '02' : '04', '添付資料'));
       otherAttachments.forEach(function (a) {
         // PDF・Office のファイルは、この担当科のすぐ後ろにページとして差し込む(番号を付ける)。それ以外はリンクだけ
         var no = '';
