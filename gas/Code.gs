@@ -135,6 +135,8 @@
  *   - 文字の入っていない(スライドを画像にした) PDF は、画面でページごとの画像にし、1ページずつ Google の OCR で読む
  *     (ocrNewsPageImage)。PDF をまるごと OCR すると「User rate limit exceeded」で失敗することがあるため。
  *     画像は AI には送らない。読み取った文字は、今まで通り名簿の確認と伏せ字をしてから使う。
+ *   - 月次報告書の添付ファイル(PDF・Word・PowerPoint・画像など)も材料に選べるようにした(報告書を添付で出した場合のため)。
+ *     名簿らしいファイル名・表計算の形式は今まで通り使わない。
  * ・【2026-11-14 お知らせ・開催準備】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - トップ画面のお知らせ(tema.jp)：画面から tema.jp の公開の一覧(WordPress の REST API)を直接読むようにした。
  *     サーバー側も、まず同じ一覧を読み、だめならトップページから読み取る(今まで通り)。
@@ -3896,6 +3898,7 @@ var NEWS_AI_MODEL = 'claude-opus-5-5';
 var NEWS_SOURCE_MAX_CHARS = 60000;   // AIに送る資料の文字数の上限(超えた分は送らない。画面で知らせる)
 var NEWS_MAX_FILES = 12;             // 1回に読む資料のファイル数の上限(時間の上限を超えないため)
 var NEWS_TEXT_TYPES = { pdf: 'pdf', ppt: 'office', pptx: 'office', doc: 'office', docx: 'office', html: 'html', htm: 'html', txt: 'text', md: 'text' };
+var NEWS_IMAGE_TYPES = { jpg: 1, jpeg: 1, png: 1, gif: 1 }; // 月次報告書の添付だけ、画像も文字を読み取る
 var NEWS_SHEET_TYPES = { xls: 1, xlsx: 1, csv: 1, tsv: 1, ods: 1, numbers: 1 };
 var NEWS_ROSTER_NAME_RE = /(名簿|受講者|受講生|参加者|申込|申し込み|出席|出欠|リスト|一覧表|住所録|連絡先|roster|attendee|participant|member.?list)/i;
 
@@ -4067,6 +4070,13 @@ function getNewsSources(payload) {
   // 月次報告書(提出済みで、この講座が「直近の講座開催」に載っているもの)
   newsReportsForCourse_(c).forEach(function (r) {
     items.push({ key: 'rp:' + r.id, kind: '月次報告書', label: r.month + '　' + r.department, usable: true, reason: '' });
+    // 報告書の添付ファイル(報告書をファイルで出した場合など)。画像も文字を読み取る
+    (r.attachments || []).forEach(function (a) {
+      if (!a || !a.fileId) return;
+      var u3 = NEWS_IMAGE_TYPES[newsFileExt_(a.fileName)] && !NEWS_ROSTER_NAME_RE.test(String(a.fileName || ''))
+        ? { usable: true, reason: '' } : newsFileUsable_(a.fileName);
+      items.push({ key: 'ra:' + r.id + ':' + a.fileId, kind: '月次報告書の添付', label: r.month + '　' + r.department + '／' + (a.fileName || '添付ファイル'), usable: u3.usable, reason: u3.reason });
+    });
   });
   return {
     course: { id: c.id, name: c.name, eventDate: c.eventDate, startTime: c.startTime, endTime: c.endTime, venue: c.venue, format: c.format, department: c.department },
@@ -4097,10 +4107,15 @@ function newsReportsForCourse_(c) {
 }
 
 /** Drive のファイルの文字を取り出す(PDF は OCR、Office は Google 形式に変換して文字だけを書き出す) */
-function newsExtractFileText_(fileId) {
+function newsExtractFileText_(fileId, allowImage) {
   var file = DriveApp.getFileById(fileId);
   var name = file.getName();
-  var type = NEWS_TEXT_TYPES[newsFileExt_(name)];
+  var type = NEWS_TEXT_TYPES[newsFileExt_(name)] || (allowImage && NEWS_IMAGE_TYPES[newsFileExt_(name)] ? 'image' : '');
+  if (type === 'image') {
+    var img = file.getBlob();
+    if (img.getBytes().length > 10 * 1024 * 1024) throw new Error('image_too_large');
+    return newsOcrBlob_(img);
+  }
   if (type === 'pdf') {
     // PDF の文字は、ふつうは画面(ブラウザ)で読み取って届く(clientTexts)。ここに来るのは、画面で読めなかったとき(画像だけの PDF など)。
     // Google の OCR は回数の上限(rate limit)に当たりやすいので、少し待って2回までやり直す
@@ -4149,7 +4164,7 @@ function getNewsSourceFile(payload) {
   else if (it.key.indexOf('mt:') === 0) {
     var m = listMaterials({ courseId: payload.courseId }).filter(function (x) { return x.id === it.key.slice(3); })[0];
     fileId = m ? m.fileId : '';
-  }
+  } else if (it.key.indexOf('ra:') === 0) fileId = it.key.split(':')[2] || '';
   if (!fileId) throw new Error('news_not_found');
   var file = DriveApp.getFileById(fileId);
   if (newsFileExt_(file.getName()) !== 'pdf') throw new Error('unsupported_file_type');
@@ -4167,13 +4182,17 @@ function ocrNewsPageImage(payload) {
   if (!b64 || b64.length > 6 * 1024 * 1024) throw new Error('image_invalid');
   var bytes = Utilities.base64Decode(b64);
   if (!(bytes.length > 3 && (bytes[0] & 0xff) === 0xff && (bytes[1] & 0xff) === 0xd8)) throw new Error('image_invalid'); // JPEG だけ
-  var blob = Utilities.newBlob(bytes, 'image/jpeg', 'page.jpg');
+  return { text: newsOcrBlob_(Utilities.newBlob(bytes, 'image/jpeg', 'page.jpg')) };
+}
+
+/** 画像を Google の OCR で読む(上限に当たったら少し待って3回までやり直す)。一時ファイルはすぐ消す */
+function newsOcrBlob_(blob) {
   var waits = [3000, 10000, 20000];
   for (var attempt = 0; ; attempt++) {
     var tempId = null;
     try {
       tempId = Drive.Files.insert({ title: 'NEWS_OCR_' + Utilities.getUuid() }, blob, { convert: true, ocr: true, ocrLanguage: 'ja' }).id;
-      return { text: DocumentApp.openById(tempId).getBody().getText() };
+      return DocumentApp.openById(tempId).getBody().getText();
     } catch (e) {
       if (attempt >= waits.length || !/rate limit|Rate Limit|429/.test(String(e && e.message || e))) throw new Error('ocr_failed:' + String(e && e.message || e));
       Utilities.sleep(waits[attempt]);
@@ -4236,10 +4255,11 @@ function prepareNewsInput(payload, user) {
       if (clientText && /\.pdf$/i.test(it.label.replace(/（[^）]*）$/, ''))) raw = clientText; // 画面で読み取った PDF の文字(この後、名簿の確認と伏せ字をする)
       else if (k.indexOf('lf:') === 0) raw = newsExtractFileText_(k.slice(3));
       else if (k.indexOf('mt:') === 0) raw = newsExtractFileText_(materialsById[k.slice(3)].fileId);
+      else if (k.indexOf('ra:') === 0) raw = newsExtractFileText_(k.split(':')[2], true); // 一覧(getNewsSources)にあった添付だけがここに来る
       else if (k.indexOf('rp:') === 0) {
         var r = reportsById[k.slice(3)];
         var entry = (r.courses || []).filter(function (e) { return normalizeCourseTitle_(e.title) === normalizeCourseTitle_(c.name); })[0] || {};
-        // 報告者名・添付ファイルは使わない。講座の行(参加人数)と、担当科の本文だけ
+        // 報告者名は使わない。講座の行(参加人数)と、担当科の本文だけ(添付ファイルは別の材料 ra: として選ぶ)
         raw = '参加人数：会場 ' + (entry.venueCount || 0) + '名／ZOOM ' + (entry.zoomCount || 0) + '名\n' +
           'その他の報告：\n' + String(r.otherContent || '') + '\n課題・改善点：\n' + String(r.issuesContent || '');
       }
