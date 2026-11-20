@@ -131,6 +131,9 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 月次PDFの並び順】「月次PDF作成」を押すと、提出済みのすべての報告書と添付資料が並び、
+ *     担当科の順番と、各担当科の添付資料の順番を変えてから作れる(compileMonthlyReportsPdf の deptOrder / attachmentOrders)。
+ *     担当科の順番は月度ごとにスクリプト プロパティ(monthlyOrder_…)に、添付資料の順番は報告書に保存し、次回も同じ順で出す。
  * ・【2026-11-20 月次報告書：報告の追加・添付の並べ替え・三役会の報告書】
  *   - 名簿(AllowedAccounts)の F列「三役会」に印(○など)がある人だけが、三役会の報告書を見る・書くことができる。
  *     F列の見出しは initializeSpreadsheet を実行すると入る(手で「三役会」と書いてもよい)。名簿を変えたら clearAccountCache を実行するとすぐ反映。
@@ -3761,8 +3764,20 @@ function compileMonthlyReportsPdf(payload, user) {
   REPORT_IMAGE_KIND_ = kind;
   var reports = listReports({ month: month, kind: kind }, user).filter(function (r) { return r.status === '提出済み'; });
   if (!reports.length) throw new Error('no_submitted_reports');
-  // 担当科の並び(2026-11-20)：ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)
+  // 添付資料の並び順(画面の「月次PDFの並び順」で決めたもの)。報告書にも保存して、次回も同じ順にする
+  if (payload.attachmentOrders && typeof payload.attachmentOrders === 'object') {
+    saveMonthlyAttachmentOrders_(reports, payload.attachmentOrders);
+  }
+  // 担当科の並び：画面で決めた順(月度ごとに保存)。無ければ ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)
+  var orderKey = 'monthlyOrder_' + kind + '_' + month;
+  var deptOrder = Array.isArray(payload.deptOrder) ? payload.deptOrder.map(String).slice(0, 100) : null;
+  if (deptOrder) PropertiesService.getScriptProperties().setProperty(orderKey, JSON.stringify(deptOrder));
+  else { try { deptOrder = JSON.parse(PropertiesService.getScriptProperties().getProperty(orderKey) || 'null'); } catch (e) { deptOrder = null; } }
   reports.sort(function (a, b) {
+    if (deptOrder) {
+      var ia = deptOrder.indexOf(a.department), ib = deptOrder.indexOf(b.department);
+      if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    }
     var d = monthlyDeptOrder_(a.department) - monthlyDeptOrder_(b.department);
     return d || String(a.department).localeCompare(String(b.department), 'ja');
   });
@@ -4000,6 +4015,27 @@ function compileMonthlyReportsPdf(payload, user) {
   }
 }
 
+/** 月次PDFの画面で決めた添付資料の順番を、報告書に保存する(載せる場所はそのまま)。orders: { 報告書ID: [fileId, ...] } */
+function saveMonthlyAttachmentOrders_(reports, orders) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return; // 混んでいるときは保存を省く(PDFは画面の順で作る)
+  try {
+    var sheet = getReportSheet();
+    reports.forEach(function (r) {
+      var order = orders[r.id];
+      if (!Array.isArray(order)) return;
+      var rowIndex = findReportRowIndexById_(sheet, r.id);
+      if (rowIndex === -1) return;
+      var atts = reorderReportAttachments_(r.attachments || [], order.map(function (fid) {
+        var a = (r.attachments || []).filter(function (x) { return x.fileId === fid; })[0];
+        return { fileId: fid, itemId: a ? (a.itemId || '') : '' };
+      }), r.otherItems || []);
+      r.attachments = atts;
+      sheet.getRange(rowIndex, reportCol('attachmentsJson')).setValue(safeCell_(JSON.stringify(atts)));
+    });
+  } finally { lock.releaseLock(); }
+}
+
 /** HTML を Google ドキュメントに変換し、PDF にして返す(一時的なドキュメントはすぐ消す) */
 function monthlyHtmlToPdf_(html, month) {
   var tempDocId = null;
@@ -4033,13 +4069,15 @@ function getMonthlyPdfInfo(payload, user) {
     if (f.getName() !== monthlyPdfBase_(month, kind) + '.pdf') return;
     if (!latest || f.getDateCreated().getTime() > latest.getDateCreated().getTime()) latest = f;
   });
-  if (!latest) return { url: '' };
+  var deptOrder = null;
+  try { deptOrder = JSON.parse(PropertiesService.getScriptProperties().getProperty('monthlyOrder_' + kind + '_' + month) || 'null'); } catch (e) {}
+  if (!latest) return { url: '', deptOrder: deptOrder };
   var createdAt = formatDateTime(latest.getDateCreated());
   // 作ったあとに、提出済みの報告書が直されたか(画面に「作り直してください」と出す)
   var outdated = listReports({ month: month, kind: kind }, user).some(function (r) {
     return r.status === '提出済み' && String(r.updatedAt || '') > createdAt;
   });
-  return { url: 'https://drive.google.com/file/d/' + latest.getId() + '/view', createdAt: createdAt, outdated: outdated };
+  return { url: 'https://drive.google.com/file/d/' + latest.getId() + '/view', createdAt: createdAt, outdated: outdated, deptOrder: deptOrder };
 }
 
 /** "YYYY-MM-DD..."形式の文字列(またはDate)をDateへ変換する。解釈できなければnull */

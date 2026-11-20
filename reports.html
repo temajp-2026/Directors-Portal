@@ -177,6 +177,13 @@
   }
 
   .attachment-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .order-dept { border: 1px solid var(--gw-border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--gw-surface); }
+  .order-dept-head { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .order-dept-head .no { color: var(--gw-orange, #e8710a); font-weight: 700; min-width: 1.6em; }
+  .order-dept-head .name { flex: 1; }
+  .order-att { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 28px; font-size: calc(var(--fs-scale, 1) * 12.5px); border-top: 1px dashed var(--gw-border); margin-top: 4px; }
+  .order-att .fname { flex: 1; word-break: break-all; }
+  .order-att .place { color: var(--gw-text-secondary); font-size: calc(var(--fs-scale, 1) * 11.5px); white-space: nowrap; }
   .kind-tabs { display: flex; gap: 6px; margin: 0 0 12px; border-bottom: 1px solid var(--gw-border); }
   .kind-tab { font-family: inherit; font-size: calc(var(--fs-scale, 1) * 13.5px); padding: 8px 16px; border: none; background: none; color: var(--gw-text-secondary); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
   .kind-tab.active { color: var(--gw-orange, #e8710a); border-bottom-color: var(--gw-orange, #e8710a); font-weight: 500; }
@@ -359,6 +366,20 @@
       <button type="button" class="btn btn-cancel" id="btnReportCancel">閉じる</button>
       <button type="button" class="btn btn-outline" id="btnReportSaveDraft">下書き保存</button>
       <button type="button" class="btn btn-primary" id="btnReportSubmit">提出する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 月次PDFの並び順 -->
+<div id="orderModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 680px;">
+    <div class="modal-title" id="orderTitle">月次PDFの並び順</div>
+    <div class="modal-sub">提出済みの報告書と添付資料が、PDFに載る順に並んでいます。↑↓で担当科の順番と、各担当科の添付資料の順番を変えてから「この順番でPDFを作る」を押してください。決めた順番は保存され、次回もこの順で表示されます。</div>
+    <div id="orderList"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnOrderCancel">閉じる</button>
+      <button type="button" class="btn btn-outline" id="btnOrderReset">はじめの順番に戻す</button>
+      <button type="button" class="btn btn-primary" id="btnOrderCompile">この順番でPDFを作る</button>
     </div>
   </div>
 </div>
@@ -701,6 +722,7 @@
     return callApi('getMonthlyPdfInfo', { month: month, kind: currentKind }).then(function (res) {
       if (month !== currentMonth || !res || !res.ok) return;
       var d = res.data || {};
+      savedDeptOrder = Array.isArray(d.deptOrder) ? d.deptOrder : null;
       var pdfLabel = currentKind === '三役会' ? '作成済みの三役会PDF' : '作成済みの月次PDF';
       if (String(d.url || '').indexOf('https://drive.google.com/') !== 0) { el.innerHTML = pdfLabel + '：まだありません'; return; }
       el.innerHTML = pdfLabel + '：<a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">開く</a>（' + escapeHtml(d.createdAt) + ' 作成）' +
@@ -1253,7 +1275,77 @@
     });
   }
 
+  /* --- PDFを作る前に、並び順を決める --- */
+  var savedDeptOrder = null; // この月度で前に決めた担当科の順番
+  var orderState = [];       // [{ report, attachments:[...] }]
+  function defaultDeptRank(name) {
+    var n = String(name || '').normalize('NFKC').replace(/\s/g, '');
+    if (/ベーシック/.test(n) && /(1年|一年)/.test(n)) return 1;
+    if (/ベーシック/.test(n) && /(2年|二年)/.test(n)) return 2;
+    if (/ベーシック/.test(n)) return 3;
+    if (/スキルアップ/.test(n)) return 4;
+    if (/^CA|CA会|CA関係/i.test(n)) return 5;
+    if (/店舗スタッフ/.test(n)) return 6;
+    return 9;
+  }
+  function buildOrderState(useSaved) {
+    var list = reports.filter(function (r) { return r.status === '提出済み'; });
+    list.sort(function (a, b) {
+      if (useSaved && savedDeptOrder) {
+        var ia = savedDeptOrder.indexOf(a.department), ib = savedDeptOrder.indexOf(b.department);
+        if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      }
+      return (defaultDeptRank(a.department) - defaultDeptRank(b.department)) || String(a.department).localeCompare(String(b.department), 'ja');
+    });
+    orderState = list.map(function (r) { return { report: r, attachments: (r.attachments || []).slice() }; });
+  }
+  function placeLabel(r, a) {
+    var items = r.otherItems || [];
+    for (var i = 0; i < items.length; i++) if (items[i].id === a.itemId) return 'その他報告「' + (items[i].heading || '報告' + (i + 1)) + '」の後ろ';
+    return '最後（添付資料）';
+  }
+  function renderOrderList() {
+    var box = $('orderList');
+    box.innerHTML = '';
+    orderState.forEach(function (o, i) {
+      var el = document.createElement('div');
+      el.className = 'order-dept';
+      el.innerHTML = '<div class="order-dept-head"><span class="no">' + (i + 1) + '</span><span class="name">' + escapeHtml(o.report.department) + '</span>' +
+        '<span class="att-move"><button type="button" class="d-up" title="上へ">↑</button><button type="button" class="d-down" title="下へ">↓</button></span></div>';
+      el.querySelector('.d-up').disabled = i === 0;
+      el.querySelector('.d-down').disabled = i === orderState.length - 1;
+      el.querySelector('.d-up').addEventListener('click', function () { moveInArray(orderState, i, -1); renderOrderList(); });
+      el.querySelector('.d-down').addEventListener('click', function () { moveInArray(orderState, i, 1); renderOrderList(); });
+      o.attachments.forEach(function (a, j) {
+        var row = document.createElement('div');
+        row.className = 'order-att';
+        row.innerHTML = '<span class="att-move"><button type="button" class="x-up" title="上へ">↑</button><button type="button" class="x-down" title="下へ">↓</button></span>' +
+          '<span class="fname">' + escapeHtml(a.fileName) + '</span><span class="place">' + escapeHtml(placeLabel(o.report, a)) + '</span>';
+        row.querySelector('.x-up').disabled = j === 0;
+        row.querySelector('.x-down').disabled = j === o.attachments.length - 1;
+        row.querySelector('.x-up').addEventListener('click', function () { moveInArray(o.attachments, j, -1); renderOrderList(); });
+        row.querySelector('.x-down').addEventListener('click', function () { moveInArray(o.attachments, j, 1); renderOrderList(); });
+        el.appendChild(row);
+      });
+      box.appendChild(el);
+    });
+  }
+  function openOrderModal() {
+    if (!reports.some(function (r) { return r.status === '提出済み'; })) { showToast(errorMessage('no_submitted_reports')); return; }
+    buildOrderState(true);
+    $('orderTitle').textContent = jpMonth(currentMonth) + '　' + (currentKind === '三役会' ? '三役会PDF' : '月次PDF') + 'の並び順';
+    $('btnOrderCompile').textContent = 'この順番で' + (currentKind === '三役会' ? '三役会PDF' : 'PDF') + 'を作る';
+    renderOrderList();
+    $('orderModal').classList.remove('hidden');
+  }
+
   function compileMonthlyPdf() {
+    $('orderModal').classList.add('hidden');
+    var order = {
+      deptOrder: orderState.map(function (o) { return o.report.department; }),
+      attachmentOrders: {}
+    };
+    orderState.forEach(function (o) { order.attachmentOrders[o.report.id] = o.attachments.map(function (a) { return a.fileId; }); });
     var btn = $('btnCompilePdf'), label = btn.textContent;
     // 作り終わってから開くと、ブラウザに「ポップアップ」として止められるため、先に窓だけ開いておく
     var win = window.open('', '_blank');
@@ -1265,7 +1357,7 @@
     }
     btn.disabled = true;
     setStatus('月次PDFを作成しています…');
-    callApi('compileMonthlyReportsPdf', { month: currentMonth, kind: currentKind }).then(function (res) {
+    callApi('compileMonthlyReportsPdf', { month: currentMonth, kind: currentKind, deptOrder: order.deptOrder, attachmentOrders: order.attachmentOrders }).then(function (res) {
       if (!res.ok) { showToast(errorMessage(res.error)); if (win) win.close(); return; }
       var data = res.data;
       if (!data.appendix || !data.appendix.length) {
@@ -1282,7 +1374,7 @@
         openUrl(data.url);
       });
     }).catch(function () { showToast('PDFの作成に失敗しました'); if (win) win.close(); })
-      .then(function () { btn.disabled = false; btn.textContent = label; loadMonthlyPdfInfo(); });
+      .then(function () { btn.disabled = false; btn.textContent = label; loadMonthData(); });
   }
 
   /* ---------- 役員会の設定(年度ごと一括) ---------- */
@@ -1416,7 +1508,10 @@
       currentMonth = $('monthSelect').value || defaultMonth();
       loadMonthData();
     });
-    $('btnCompilePdf').addEventListener('click', compileMonthlyPdf);
+    $('btnCompilePdf').addEventListener('click', openOrderModal);
+    $('btnOrderCompile').addEventListener('click', compileMonthlyPdf);
+    $('btnOrderCancel').addEventListener('click', function () { $('orderModal').classList.add('hidden'); });
+    $('btnOrderReset').addEventListener('click', function () { buildOrderState(false); renderOrderList(); });
 
     $('btnBoardSettings').addEventListener('click', openBoardModal);
     $('btnBoardClose').addEventListener('click', closeBoardModal);
