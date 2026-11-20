@@ -227,7 +227,7 @@
   .ns-sheet {
     --ink: #1d2433; --sub: #5b6475; --line: #d9dde5; --accent: #1f5fbf; --accent-soft: #eef3fb; --warm: #b4651f; --warm-soft: #fbf4ea;
     width: 210mm; min-height: 297mm; margin: 0 auto; padding: 13mm 15mm 11mm; background: #fff; color: var(--ink);
-    box-shadow: 0 2px 12px rgba(0,0,0,.12); display: flex; flex-direction: column; gap: 4.2mm;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12); display: flex; flex-direction: column; gap: calc(var(--ns-fs, 1) * 4.2mm);
     font-family: 'Noto Sans JP', sans-serif; position: relative;
   }
   .ns-sheet [contenteditable] { outline: none; border-radius: 2px; }
@@ -235,30 +235,30 @@
   .ns-sheet [contenteditable]:focus { background: #fff8d6; box-shadow: 0 0 0 2px #f5d76e; }
   .ns-sheet [contenteditable]:empty::before { content: attr(data-ph); color: #b0b6c2; }
   .ns-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2.5px solid var(--ink); padding-bottom: 2mm; }
-  .ns-brand { font-weight: 900; font-size: 22pt; letter-spacing: .04em; line-height: 1.1; }
-  .ns-brand small { display: block; font-size: 7.5pt; font-weight: 500; letter-spacing: .12em; color: var(--sub); }
-  .ns-issue { text-align: right; font-size: 8pt; color: var(--sub); line-height: 1.5; }
-  .ns-kicker { font-size: 8.5pt; font-weight: 700; color: var(--accent); letter-spacing: .08em; }
-  .ns-title { font-family: 'Noto Serif JP', serif; font-size: 19pt; font-weight: 700; line-height: 1.35; margin: 1mm 0 1.5mm; white-space: pre-line; }
-  .ns-lead { font-size: 9.6pt; line-height: 1.75; margin: 0; white-space: pre-line; }
-  .ns-meta { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 1mm 3mm; font-size: 8.3pt; background: #f6f7f9; border-radius: 2mm; padding: 2.5mm 3.5mm; margin: 0; }
+  .ns-brand { font-weight: 900; font-size: calc(var(--ns-fs, 1) * 22pt); letter-spacing: .04em; line-height: 1.1; }
+  .ns-brand small { display: block; font-size: calc(var(--ns-fs, 1) * 7.5pt); font-weight: 500; letter-spacing: .12em; color: var(--sub); }
+  .ns-issue { text-align: right; font-size: calc(var(--ns-fs, 1) * 8pt); color: var(--sub); line-height: 1.5; }
+  .ns-kicker { font-size: calc(var(--ns-fs, 1) * 8.5pt); font-weight: 700; color: var(--accent); letter-spacing: .08em; }
+  .ns-title { font-family: 'Noto Serif JP', serif; font-size: calc(var(--ns-fs, 1) * 19pt); font-weight: 700; line-height: 1.35; margin: 1mm 0 1.5mm; white-space: pre-line; }
+  .ns-lead { font-size: calc(var(--ns-fs, 1) * 9.6pt); line-height: 1.75; margin: 0; white-space: pre-line; }
+  .ns-meta { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 1mm 3mm; font-size: calc(var(--ns-fs, 1) * 8.3pt); background: #f6f7f9; border-radius: 2mm; padding: 2.5mm 3.5mm; margin: 0; }
   .ns-meta dt { color: var(--sub); }
   .ns-meta dd { margin: 0; font-weight: 500; }
-  .ns-sec h2 { font-size: 11pt; margin: 0 0 1.2mm; line-height: 1.4; padding-left: 2.5mm; border-left: 3px solid var(--accent); }
+  .ns-sec h2 { font-size: calc(var(--ns-fs, 1) * 11pt); margin: 0 0 1.2mm; line-height: 1.4; padding-left: 2.5mm; border-left: 3px solid var(--accent); }
   .ns-sec.soft h2 { border-left-color: var(--warm); }
-  .ns-body { font-size: 9.2pt; line-height: 1.72; margin: 0; white-space: pre-line; }
+  .ns-body { font-size: calc(var(--ns-fs, 1) * 9.2pt); line-height: 1.72; margin: 0; white-space: pre-line; }
   .ns-sec.soft .ns-body { background: var(--warm-soft); border-left: 3px solid var(--warm); border-radius: 1.5mm; padding: 2.4mm 3.2mm; }
   .ns-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: 1.8mm; }
   .ns-box { border: 1px solid var(--line); border-radius: 1.8mm; padding: 2.2mm 3mm; background: #fff; }
-  .ns-box h3 { font-size: 8.8pt; margin: 0 0 1mm; color: var(--accent); }
-  .ns-box ul { margin: 0; padding-left: 4.2mm; font-size: 8.5pt; line-height: 1.6; }
+  .ns-box h3 { font-size: calc(var(--ns-fs, 1) * 8.8pt); margin: 0 0 1mm; color: var(--accent); }
+  .ns-box ul { margin: 0; padding-left: 4.2mm; font-size: calc(var(--ns-fs, 1) * 8.5pt); line-height: 1.6; }
   .ns-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6mm; margin-top: 1.8mm; }
-  .ns-step { background: var(--accent-soft); border-radius: 1.5mm; padding: 1.8mm 2mm; font-size: 8.2pt; line-height: 1.5; }
-  .ns-step b { display: block; color: var(--accent); font-size: 8.8pt; }
+  .ns-step { background: var(--accent-soft); border-radius: 1.5mm; padding: 1.8mm 2mm; font-size: calc(var(--ns-fs, 1) * 8.2pt); line-height: 1.5; }
+  .ns-step b { display: block; color: var(--accent); font-size: calc(var(--ns-fs, 1) * 8.8pt); }
   .ns-sec { display: flow-root; }
-  .ns-photo { float: right; width: 72mm; margin: 0.5mm 0 1.5mm 4mm; }
-  .ns-photo img { display: block; width: 100%; height: 50mm; object-fit: cover; border-radius: 1.5mm; background: #eef0f3; }
-  .ns-photo figcaption { font-size: 7.6pt; color: var(--sub); line-height: 1.45; margin-top: 0.8mm; }
+  .ns-photo { float: right; width: calc(var(--ns-fs, 1) * 72mm); margin: 0.5mm 0 1.5mm 4mm; }
+  .ns-photo img { display: block; width: 100%; height: calc(var(--ns-fs, 1) * 50mm); object-fit: cover; border-radius: 1.5mm; background: #eef0f3; }
+  .ns-photo figcaption { font-size: calc(var(--ns-fs, 1) * 7.6pt); color: var(--sub); line-height: 1.45; margin-top: 0.8mm; }
   .ns-photo .ns-tools { margin-top: 0.6mm; }
   .ns-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 2mm; display: flex; justify-content: space-between; gap: 4mm; font-size: 7.5pt; color: var(--sub); }
   /* 編集用の小さなボタン(印刷しない) */
@@ -397,7 +397,7 @@
         <button type="button" class="btn btn-primary btn-small" id="btnIssue">PDFを発行</button>
       </div>
       <div class="info-note">紙面の文字をクリックすると、そのまま書き換えられます。点線のボタンで項目や段落を足したり消したりできます（印刷には出ません）。変更は自動で保存されます。</div>
-      <div id="overflowNote" class="warn-note hidden">A4一枚を超えています（赤い点線より下は2ページ目になります）。文章を短くしてください。</div>
+      <div id="overflowNote" class="warn-note hidden">A4一枚を超えています（赤い点線より下は2ページ目になります）。文章を短くするか、<button type="button" class="btn btn-outline btn-small" id="btnFit">文字を小さくして1枚に収める</button></div>
       <div class="sheet-wrap"><article id="nsSheet" class="ns-sheet"></article></div>
     </div>
   </div>
@@ -838,7 +838,10 @@
       if (!res.ok) { showToast(errText(res.error)); return; }
       editing = { id: res.data.id, courseId: course.id, courseName: course.name, content: content, status: '下書き' };
       openEditor();
-      showToast('たたき台を作りました。紙面の上で直してください');
+      if (checkOverflow()) {
+        var fit = fitToPage();
+        showToast(fit ? 'たたき台を作りました。1枚に収まるよう文字を少し小さくしています' : 'たたき台を作りました。A4一枚を超えているので、文章を短くしてください');
+      } else showToast('たたき台を作りました。紙面の上で直してください');
       loadData();
     });
   }
@@ -964,6 +967,7 @@
   function renderSheet() {
     var c = editing.content, s = $('nsSheet');
     s.innerHTML = '';
+    s.style.setProperty('--ns-fs', String(c.fontScale || 1));
     var head = document.createElement('header');
     head.className = 'ns-head';
     head.innerHTML = '<div class="ns-brand"><small>TeMA MEMBERS’ NEWSLETTER</small>TeMA NEWS</div>' +
@@ -992,6 +996,7 @@
     var metaTools = document.createElement('div');
     metaTools.className = 'ns-tools';
     metaTools.appendChild(toolBtn('＋ 講座の情報を足す', function () { c.meta.push({ label: '', value: '' }); }));
+    if (c.fontScale && c.fontScale < 1) metaTools.appendChild(toolBtn('文字の大きさ ' + Math.round(c.fontScale * 100) + '%（元に戻す）', function () { delete c.fontScale; }));
     if (!(c.photo && c.photo.fileId)) {
       var addPhoto = document.createElement('button');
       addPhoto.type = 'button'; addPhoto.textContent = '＋ 写真を入れる';
@@ -1090,6 +1095,20 @@
     return over;
   }
 
+  /** 文字を少しずつ小さくして、A4一枚に収める(80%まで)。収まったら true */
+  function fitToPage() {
+    var c = editing.content, s = $('nsSheet');
+    var scale = c.fontScale || 1;
+    while (checkOverflow() && scale > 0.8) {
+      scale = Math.round((scale - 0.02) * 100) / 100;
+      s.style.setProperty('--ns-fs', String(scale));
+    }
+    if (scale < 1) c.fontScale = scale; else delete c.fontScale;
+    var ok = !checkOverflow();
+    changed(true);
+    return ok;
+  }
+
   function changed(rerender) {
     dirty = true;
     setSaveState('未保存の変更があります…');
@@ -1172,6 +1191,9 @@
     $('btnBlank').addEventListener('click', function () { if (createState) createArticle(createState.course, blankContent(createState.course)); });
     $('btnEditBack').addEventListener('click', backToList);
     $('btnEditSave').addEventListener('click', function () { dirty = true; saveNow(); });
+    $('btnFit').addEventListener('click', function () {
+      if (!fitToPage()) showToast('文字を小さくしても収まりません。文章を短くしてください');
+    });
     $('btnEditDelete').addEventListener('click', deleteEditing);
     $('btnIssue').addEventListener('click', issuePdf);
     // 紙面の文字を書き換えたら、その場所の値を更新する(貼り付けた文字は書式を外す)
