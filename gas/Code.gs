@@ -136,6 +136,9 @@
  *     (ocrNewsPageImage)。PDF をまるごと OCR すると「User rate limit exceeded」で失敗することがあるため。
  *     画像は AI には送らない。読み取った文字は、今まで通り名簿の確認と伏せ字をしてから使う。
  *   - 月次報告書の添付ファイル(PDF・Word・PowerPoint・画像など)も材料に選べるようにした(報告書を添付で出した場合のため)。
+ *   - 紙面に写真を1枚入れられるようにした(uploadNewsPhoto / getNewsPhoto)。写真は Google ドライブの
+ *     「理事ポータル_TeMA NEWS写真」フォルダに保存する(初めて使うときに自動で作られる)。写真は AI には送らない。
+ *   - AI への指示：転・結がぼかしすぎで伝えたいことが分からなかったため、「どうやるか」だけをぼかし、「何を伝えたいか」ははっきり書くよう変えた。
  *     名簿らしいファイル名・表計算の形式は今まで通り使わない。
  * ・【2026-11-14 お知らせ・開催準備】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - トップ画面のお知らせ(tema.jp)：画面から tema.jp の公開の一覧(WordPress の REST API)を直接読むようにした。
@@ -835,6 +838,12 @@ function handleRequest(e) {
         break;
       case 'generateNewsDraft':
         result = generateNewsDraft(body.payload, user);
+        break;
+      case 'uploadNewsPhoto':
+        result = uploadNewsPhoto(body.payload, user);
+        break;
+      case 'getNewsPhoto':
+        result = getNewsPhoto(body.payload);
         break;
       case 'saveNewsArticle':
         result = saveNewsArticle(body.payload, user);
@@ -3969,6 +3978,10 @@ function sanitizeNewsContent_(c) {
     }),
     footer: s(c.footer, 200)
   };
+  // 写真(1枚)。ファイルIDの形だけ確かめる(中身は getNewsPhoto で、写真のフォルダにあるものだけ返す)
+  if (c.photo && /^[A-Za-z0-9_-]{10,200}$/.test(String(c.photo.fileId || ''))) {
+    out.photo = { fileId: String(c.photo.fileId), caption: s(c.photo.caption, 120) };
+  }
   var json = JSON.stringify(out);
   if (json.length > 45000) throw new Error('news_too_long'); // セル1つの上限(5万文字)より小さく
   return out;
@@ -4002,6 +4015,38 @@ function saveNewsArticle(payload, user) {
   sheet.appendRow(safeRow_(NEWS_HEADERS.map(function (h) { return obj[h]; })));
   appendLog(user.email, 'saveNewsArticle', courseName + '(新規)');
   return { id: obj.id, updatedAt: formatDateTime(now) };
+}
+
+/** TeMA NEWS の写真を保存する Google ドライブのフォルダ(無ければ作る) */
+function getOrCreateNewsPhotoFolder_() {
+  var name = '理事ポータル_TeMA NEWS写真';
+  var folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
+}
+
+/** 紙面に入れる写真を保存する(画面で縮めた JPEG)。payload: { base64, fileName } 戻り値：{ fileId } */
+function uploadNewsPhoto(payload, user) {
+  var b64 = payload && typeof payload.base64 === 'string' ? payload.base64 : '';
+  if (!b64 || b64.length > 6 * 1024 * 1024) throw new Error('image_invalid');
+  var bytes = Utilities.base64Decode(b64);
+  if (!(bytes.length > 3 && (bytes[0] & 0xff) === 0xff && (bytes[1] & 0xff) === 0xd8)) throw new Error('image_invalid'); // JPEG だけ
+  var name = 'NEWS_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmmss') + '.jpg';
+  var file = getOrCreateNewsPhotoFolder_().createFile(Utilities.newBlob(bytes, 'image/jpeg', name));
+  appendLog(user.email, 'uploadNewsPhoto', name);
+  return { fileId: file.getId() };
+}
+
+/** 紙面の写真を返す(写真のフォルダにあるものだけ)。payload: { fileId } 戻り値：{ base64 } */
+function getNewsPhoto(payload) {
+  var id = payload && String(payload.fileId || '');
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) throw new Error('news_photo_not_found');
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { throw new Error('news_photo_not_found'); }
+  var folderId = getOrCreateNewsPhotoFolder_().getId(), parents = file.getParents(), ok = false;
+  while (parents.hasNext()) { if (parents.next().getId() === folderId) { ok = true; break; } }
+  if (!ok || file.isTrashed()) throw new Error('news_photo_not_found');
+  return { base64: Utilities.base64Encode(file.getBlob().getBytes()) };
 }
 
 /** PDFを発行したことを記録する。payload: { id } */
@@ -4307,8 +4352,10 @@ var NEWS_SYSTEM_PROMPT = [
   '- 「書かない項目」として指定されたことは、ぼかした形でも書かない。',
   '- 受講した人との差を残すため、構成を4つに分ける。',
   '  1つ目(起)と2つ目(承)は tone を "clear" にし、テーマ・背景・講座で扱った要点を、はっきり具体的に書く。',
-  '  3つ目(転)と4つ目(結)は tone を "soft" にし、核心の手法・具体的な数字・手順・失敗談の中身は書かず、「何かがある」と興味を引く程度にぼかす。',
-  '  最後は、続きは講座で、という気持ちになる一文で終える。',
+  '  3つ目(転)と4つ目(結)は tone を "soft" にする。ぼかすのは「どうやるか」(具体的な手順・数字・テンプレート・事例や失敗談の中身)だけで、「何を伝えたいか」ははっきり書く。',
+  '  3つ目(転)：講座の転換点を書く。今までの考え方・やり方のどこに落とし穴があり、講師がどんな方向の解決策を示したのかを、読んで意味が分かる言葉で言い切る(例：「〇〇ではなく△△に目を向けることが鍵だと示されました」)。',
+  '  4つ目(結)：受講した人が持ち帰れるものを書く。お店の何がどう変わるのか、明日から何に取り組めるのかを具体的に示し、最後に「その具体的な方法は講座で」という気持ちになる一文で終える。',
+  '  転・結では「ある工夫」「何か」「秘密」「ヒント」のような、中身の分からない言葉だけで終わらせない。各段落の最初の一文で、その段落の結論を言う。',
   '- 文体は「です・ます」。専門用語は使いすぎず、平易に。',
   '',
   '# 分量(A4一枚に収めるため)',

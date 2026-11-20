@@ -255,6 +255,11 @@
   .ns-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6mm; margin-top: 1.8mm; }
   .ns-step { background: var(--accent-soft); border-radius: 1.5mm; padding: 1.8mm 2mm; font-size: 8.2pt; line-height: 1.5; }
   .ns-step b { display: block; color: var(--accent); font-size: 8.8pt; }
+  .ns-sec { display: flow-root; }
+  .ns-photo { float: right; width: 72mm; margin: 0.5mm 0 1.5mm 4mm; }
+  .ns-photo img { display: block; width: 100%; height: 50mm; object-fit: cover; border-radius: 1.5mm; background: #eef0f3; }
+  .ns-photo figcaption { font-size: 7.6pt; color: var(--sub); line-height: 1.45; margin-top: 0.8mm; }
+  .ns-photo .ns-tools { margin-top: 0.6mm; }
   .ns-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 2mm; display: flex; justify-content: space-between; gap: 4mm; font-size: 7.5pt; color: var(--sub); }
   /* 編集用の小さなボタン(印刷しない) */
   .ns-tools { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 1.2mm; }
@@ -512,6 +517,8 @@
   var ERROR_MESSAGES = {
     course_not_found: '講座が見つかりませんでした。画面を再読み込みしてください。',
     news_not_found: '講座レポートが見つかりませんでした。画面を再読み込みしてください。',
+    news_photo_not_found: '写真が見つかりませんでした。もう一度入れ直してください。',
+    image_invalid: '写真を読み込めませんでした。JPEG・PNG などの写真を選んでください。',
     news_no_sources: '使える材料が選ばれていません。',
     news_too_many_files: '一度に使える資料は12ファイルまでです。材料を減らしてください。',
     news_ai_not_configured: 'AIの設定（鍵）がまだ済んでいません。',
@@ -678,7 +685,11 @@
   }
   /** 材料の PDF を取り寄せて、ページごとの文字を取り出す(文字の入っていない画像だけの PDF では空になる) */
   var PDF_OCR_MAX_PAGES = 30;
+  var PDF_OCR_PARALLEL = 3;     // 同時に読むページ数(多すぎると Google の上限に当たる)
+  var pdfTextCache = {};        // この画面を開いている間だけ、読み取った文字を覚えておく(材料を選び直したときに読み直さない)
   function extractPdfText(courseId, key, onProgress) {
+    var cacheKey = courseId + '|' + key;
+    if (pdfTextCache[cacheKey]) return Promise.resolve(pdfTextCache[cacheKey]);
     var pdfDoc = null;
     return callApi('getNewsSourceFile', { courseId: courseId, key: key }).then(function (res) {
       if (!res.ok) throw new Error(res.error || 'pdf_load_failed');
@@ -702,6 +713,9 @@
     }).then(function (text) {
       if (text.replace(/（\d+ページ）|\s/g, '').length >= 30 || !pdfDoc) return text;
       return ocrPdfPages(pdfDoc, onProgress);
+    }).then(function (text) {
+      if (text.replace(/（\d+ページ）|\s/g, '').length >= 30) pdfTextCache[cacheKey] = text;
+      return text;
     });
   }
   /**
@@ -709,13 +723,10 @@
    * 画像は OCR のためだけに使い、AI には送らない(読み取った文字は、サーバーで名簿の確認と伏せ字をしてから使う)。
    */
   function ocrPdfPages(pdf, onProgress) {
-    var n = Math.min(pdf.numPages, PDF_OCR_MAX_PAGES), pages = [], chain = Promise.resolve();
-    for (var p = 1; p <= n; p++) {
-      (function (pn) {
-        chain = chain.then(function () {
-          if (onProgress) onProgress(pn, n);
-          return pdf.getPage(pn);
-        }).then(function (page) {
+    var n = Math.min(pdf.numPages, PDF_OCR_MAX_PAGES), pages = [], next = 1, done = 0;
+    if (onProgress) onProgress(0, n);
+    function readPage(pn) {
+      return pdf.getPage(pn).then(function (page) {
           var base = page.getViewport({ scale: 1 });
           var scale = Math.min(3, 1600 / Math.max(base.width, base.height));
           var vp = page.getViewport({ scale: scale });
@@ -729,11 +740,19 @@
             return callApi('ocrNewsPageImage', { base64: b64 });
           });
         }).then(function (res) {
-          if (res && res.ok && res.data && res.data.text) pages.push('（' + pn + 'ページ）\n' + String(res.data.text).trim());
-        }).catch(function () { /* このページは読めなかった。次のページへ */ });
-      })(p);
+          if (res && res.ok && res.data && res.data.text) pages[pn] = '（' + pn + 'ページ）\n' + String(res.data.text).trim();
+        }).catch(function () { /* このページは読めなかった。次のページへ */ })
+        .then(function () { done++; if (onProgress) onProgress(done, n); });
     }
-    return chain.then(function () { return pages.join('\n\n'); });
+    // 数ページずつ同時に読む
+    function worker() {
+      if (next > n) return Promise.resolve();
+      var pn = next++;
+      return readPage(pn).then(worker);
+    }
+    var workers = [];
+    for (var w = 0; w < PDF_OCR_PARALLEL; w++) workers.push(worker());
+    return Promise.all(workers).then(function () { return pages.filter(Boolean).join('\n\n'); });
   }
 
   function prepareInput() {
@@ -753,7 +772,7 @@
       chain = chain.then(function () {
         btn.textContent = 'PDFの文字を読み取っています…（' + (i + 1) + ' / ' + pdfKeys.length + '）';
         return extractPdfText(courseId, k, function (pn, n) {
-          btn.textContent = '画像のPDFを読み取っています…（' + pn + ' / ' + n + 'ページ）';
+          btn.textContent = '画像のPDFを読み取っています…（' + pn + ' / ' + n + 'ページ完了）';
         }).then(function (t) {
           if (t.replace(/（\d+ページ）|\s/g, '').length >= 30) clientTexts[k] = t;
         }).catch(function () { /* サーバー側で読み取る */ });
@@ -873,6 +892,75 @@
     return b;
   }
 
+  /* ---------- 写真(紙面に1枚) ---------- */
+  var photoCache = {}; // fileId → 画像(data URL)。この画面を開いている間だけ覚えておく
+  function pickPhoto() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      if (!/^image\//.test(f.type)) { showToast(errText('image_invalid')); return; }
+      showToast('写真を入れています…');
+      shrinkPhoto(f).then(function (dataUrl) {
+        return callApi('uploadNewsPhoto', { base64: dataUrl.split(',')[1] }).then(function (res) {
+          if (!res.ok) { showToast(errText(res.error)); return; }
+          photoCache[res.data.fileId] = dataUrl;
+          var old = editing.content.photo || {};
+          editing.content.photo = { fileId: res.data.fileId, caption: old.caption || '' };
+          changed(true);
+          showToast('写真を入れました');
+        });
+      }).catch(function () { showToast(errText('image_invalid')); });
+    });
+    inp.click();
+  }
+  /** 写真を長い辺 1600px までの JPEG に縮める(向きはブラウザが直したものを使う) */
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('image_invalid')); };
+      img.src = url;
+    });
+  }
+  function loadPhoto(fileId) {
+    if (photoCache[fileId]) return Promise.resolve(photoCache[fileId]);
+    return callApi('getNewsPhoto', { fileId: fileId }).then(function (res) {
+      if (!res.ok) throw new Error(res.error);
+      photoCache[fileId] = 'data:image/jpeg;base64,' + res.data.base64;
+      return photoCache[fileId];
+    });
+  }
+  function photoFigure(c) {
+    var fig = document.createElement('figure');
+    fig.className = 'ns-photo';
+    var img = document.createElement('img');
+    img.alt = '';
+    fig.appendChild(img);
+    loadPhoto(c.photo.fileId).then(function (src) { img.src = src; img.onload = checkOverflow; })
+      .catch(function (e) { showToast(errText(e && e.message)); });
+    fig.appendChild(editable('figcaption', '', 'photo.caption', '写真の説明（なくてもよい）'));
+    var t = document.createElement('div');
+    t.className = 'ns-tools';
+    var change = document.createElement('button');
+    change.type = 'button'; change.textContent = '写真を差し替える';
+    change.addEventListener('click', pickPhoto);
+    t.appendChild(change);
+    t.appendChild(toolBtn('× 写真を外す', function () { delete c.photo; }));
+    fig.appendChild(t);
+    return fig;
+  }
+
   function renderSheet() {
     var c = editing.content, s = $('nsSheet');
     s.innerHTML = '';
@@ -904,12 +992,19 @@
     var metaTools = document.createElement('div');
     metaTools.className = 'ns-tools';
     metaTools.appendChild(toolBtn('＋ 講座の情報を足す', function () { c.meta.push({ label: '', value: '' }); }));
+    if (!(c.photo && c.photo.fileId)) {
+      var addPhoto = document.createElement('button');
+      addPhoto.type = 'button'; addPhoto.textContent = '＋ 写真を入れる';
+      addPhoto.addEventListener('click', pickPhoto);
+      metaTools.appendChild(addPhoto);
+    }
     s.appendChild(metaTools);
 
     (c.sections || []).forEach(function (sec, i) {
       var el = document.createElement('section');
       el.className = 'ns-sec' + (sec.tone === 'soft' ? ' soft' : '');
       el.appendChild(editable('h2', '', 'sections.' + i + '.heading', '段落の見出し'));
+      if (i === 0 && c.photo && c.photo.fileId) el.appendChild(photoFigure(c)); // 写真は1つ目の段落の右に置く
       el.appendChild(editable('p', 'ns-body', 'sections.' + i + '.body', '本文'));
       if ((sec.boxes || []).length) {
         var cols = document.createElement('div');
@@ -1030,7 +1125,10 @@
         showToast('印刷の画面で、送り先を「PDFに保存」にして保存してください');
         var title = document.title;
         document.title = 'TeMA NEWS_' + String(editing.courseName || '').replace(/[\\\/:*?"<>|]/g, '');
-        setTimeout(function () { window.print(); document.title = title; }, 300);
+        var imgs = Array.prototype.slice.call($('nsSheet').querySelectorAll('img'));
+        Promise.all(imgs.map(function (im) {
+          return im.complete && im.src ? null : new Promise(function (r) { im.addEventListener('load', r); im.addEventListener('error', r); setTimeout(r, 8000); });
+        })).then(function () { setTimeout(function () { window.print(); document.title = title; }, 300); });
         loadData();
       });
     });
