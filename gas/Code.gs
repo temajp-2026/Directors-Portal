@@ -131,6 +131,11 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 月次PDF：添付資料はその担当科のすぐ後ろに・作成済みのPDFを開ける】新しいシートや列の追加はありません。
+ *   - 添付資料を差し込む担当科のところで、月次PDFを「部分」に分けて作り(…月度報告書_部分N.pdf)、画面で
+ *     部分1 → その科の添付資料 → 部分2 … の順に結合する。結合後、部分のファイルはゴミ箱へ。
+ *   - 同じ月度の古い月次PDFは、新しいPDFができたらゴミ箱へ移す(同じ名前のファイルが増えないように)。
+ *   - getMonthlyPdfInfo：その月度の作成済みの月次PDF(作成日時、作成後に報告書が更新されたか)を返す。
  * ・【2026-11-20 月次PDFの並び順・添付資料のページ差し込み】新しいシートや列の追加はありません。
  *   - 担当科の並び：ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)。
  *   - 添付資料(PDF・Word・Excel・PowerPoint)を、リンクではなくページとして巻末に差し込む。
@@ -895,6 +900,9 @@ function handleRequest(e) {
         break;
       case 'beginLecturerMaterialUpload':
         result = beginLecturerMaterialUpload(body.payload, user);
+        break;
+      case 'getMonthlyPdfInfo':
+        result = getMonthlyPdfInfo(body.payload);
         break;
       case 'getMonthlyPdfPart':
         result = getMonthlyPdfPart(body.payload);
@@ -3533,7 +3541,8 @@ function checkMonthlyBasePdf_(month, fileId) {
   try { file = DriveApp.getFileById(String(fileId || '')); } catch (e) { throw new Error('file_not_found'); }
   var folderId = getOrCreateReportFolder_().getId(), parents = file.getParents(), ok = false;
   while (parents.hasNext()) { if (parents.next().getId() === folderId) { ok = true; break; } }
-  if (!ok || file.isTrashed() || file.getName() !== month + '月度報告書.pdf') throw new Error('file_not_found');
+  var name = file.getName();
+  if (!ok || file.isTrashed() || (name !== month + '月度報告書.pdf' && !/^\d{4}-\d{2}月度報告書_部分\d+\.pdf$/.test(name)) || name.indexOf(month) !== 0) throw new Error('file_not_found');
   return file;
 }
 
@@ -3575,19 +3584,21 @@ function getMonthlyPdfPart(payload) {
   }
 }
 
-/** 添付資料を差し込んだ月次PDFの保存を始める(分割アップロード)。payload: { month, baseFileId, size } */
+/** 添付資料を差し込んだ月次PDFの保存を始める(分割アップロード)。payload: { month, baseFileId, partFileIds, size } */
 function beginMonthlyPdfUpload(payload, user) {
   var base = checkMonthlyBasePdf_(payload && payload.month, payload && payload.baseFileId);
+  var ids = [base.getId()];
+  (Array.isArray(payload.partFileIds) ? payload.partFileIds : []).slice(0, 50).forEach(function (id) { ids.push(checkMonthlyBasePdf_(payload.month, id).getId()); });
   var size = Number(payload.size);
   if (!(size > 0) || size > 200 * 1024 * 1024) throw new Error('file_too_large');
   return chunkUploadBegin_({ fileName: payload.month + '月度報告書.pdf', mimeType: 'application/pdf', size: size,
-    folderId: getOrCreateReportFolder_().getId(), purpose: 'monthlyPdf', extra: base.getId() });
+    folderId: getOrCreateReportFolder_().getId(), purpose: 'monthlyPdf', extra: ids.join(',') });
 }
 
 /** 添付資料を差し込んだ月次PDFを保存し終える(差し込む前のPDFはゴミ箱へ)。payload: { uploadId } 戻り値：{ fileId, url } */
 function finishMonthlyPdfUpload(payload, user) {
   var st = chunkUploadTake_(payload && payload.uploadId, 'monthlyPdf');
-  try { DriveApp.getFileById(st.extra).setTrashed(true); } catch (e) {}
+  String(st.extra || '').split(',').forEach(function (id) { if (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} } });
   appendLog(user.email, 'compileMonthlyReportsPdf', st.fileName + '(添付資料を差し込み)');
   return { fileId: st.fileId, url: 'https://drive.google.com/file/d/' + st.fileId + '/view' };
 }
@@ -3608,7 +3619,7 @@ function compileMonthlyReportsPdf(payload, user) {
     var d = monthlyDeptOrder_(a.department) - monthlyDeptOrder_(b.department);
     return d || String(a.department).localeCompare(String(b.department), 'ja');
   });
-  var appendix = []; // 巻末にページとして差し込む添付資料(画面で結合する)
+  var appendix = []; // ページとして差し込む添付資料(画面で、その担当科の部分のすぐ後ろに結合する)
 
   var monthLabelMatch = String(month).match(/^(\d{4})-(\d{2})/);
   var monthLabel = monthLabelMatch ? (Number(monthLabelMatch[1]) + '年' + Number(monthLabelMatch[2]) + '月') : escapeHtml_(month);
@@ -3644,7 +3655,10 @@ function compileMonthlyReportsPdf(payload, user) {
     '</tr></table>';
   }
 
-  var htmlParts = [];
+  // 添付資料を差し込む担当科のところで「部分」を区切る(部分ごとに PDF にし、画面で添付資料をはさんで結合する)
+  var segments = [[]];
+  var htmlParts = segments[0];
+  var newSegment = false;
   // ページ上部：法人名(8.5pt)／MONTHLY REPORT＋年月(8pt)／タイトル(19pt)／細いアクセント罫線、の4段のみ。
   htmlParts.push(
     '<div style="margin-bottom:14pt;">' +
@@ -3659,11 +3673,15 @@ function compileMonthlyReportsPdf(payload, user) {
   );
 
   reports.forEach(function (r, idx) {
+    // 前の担当科に差し込む添付資料があったら、ここから新しい部分(新しいページ)にする
+    if (newSegment) { htmlParts = []; segments.push(htmlParts); }
+    var top = idx === 0 || newSegment;
+    newSegment = false;
     // 強制改ページは原則廃止。担当科の切れ目は「上下余白+2pxアクセント罫線」のみで表現し、
     // 複数の担当科が同一ページに連続して掲載されるようにする(自然にページが尽きた場合のみ
     // ブラウザ/Googleドキュメント側の通常改ページに委ねる)。
-    var deptTopMargin = idx === 0 ? '8pt' : '28pt';
-    var deptRule = idx === 0 ? '' : ('<div style="border-top:1px solid ' + DEPT_DIVIDER + '; margin-bottom:8pt;"></div>');
+    var deptTopMargin = top ? '8pt' : '28pt';
+    var deptRule = top ? '' : ('<div style="border-top:1px solid ' + DEPT_DIVIDER + '; margin-bottom:8pt;"></div>');
 
     // 担当科名・報告者(マストヘッド)。見出しだけが取り残されないよう次セクションとの分離を避ける。
     htmlParts.push(
@@ -3748,11 +3766,12 @@ function compileMonthlyReportsPdf(payload, user) {
       htmlParts.push('<div style="page-break-inside:avoid;">');
       htmlParts.push(sectionHeading_('04', '添付資料'));
       otherAttachments.forEach(function (a) {
-        // PDF・Office のファイルは巻末にページとして差し込む(番号を付ける)。それ以外はリンクだけ
+        // PDF・Office のファイルは、この担当科のすぐ後ろにページとして差し込む(番号を付ける)。それ以外はリンクだけ
         var no = '';
         if (a.fileId && MONTHLY_APPENDIX_TYPES[monthlyFileExt_(a.fileName)]) {
-          appendix.push({ no: appendix.length + 1, fileId: a.fileId, fileName: a.fileName, department: r.department });
-          no = '<span style="color:' + INK_SECONDARY + '; font-size:9pt; white-space:nowrap;">巻末の添付資料 ' + appendix.length + '</span>　';
+          appendix.push({ no: appendix.length + 1, fileId: a.fileId, fileName: a.fileName, department: r.department, afterPart: segments.length - 1 });
+          newSegment = true;
+          no = '<span style="color:' + INK_SECONDARY + '; font-size:9pt; white-space:nowrap;">この報告のあとに掲載（ATTACHMENT ' + appendix.length + '）</span>　';
         }
         htmlParts.push(
           '<div style="padding:6pt 0; border-bottom:1px solid ' + HAIRLINE + '; font-size:10pt;">' +
@@ -3773,42 +3792,72 @@ function compileMonthlyReportsPdf(payload, user) {
       htmlParts.push('<div style="text-align:center;">' + imageTagForFileId_(a.fileId, 'max-width:100%; max-height:23cm; height:auto;') + '</div>');
     });
   });
-  if (appendix.length) {
-    // 巻末の添付資料の目次(この後ろに、画面で各ファイルのページを差し込む)
-    htmlParts.push('<div style="page-break-before:always;"></div>');
-    htmlParts.push('<div style="font-size:16pt; font-weight:bold; color:' + INK_PRIMARY + '; margin-bottom:4pt;">巻末の添付資料</div>');
-    htmlParts.push('<div style="font-size:9pt; color:' + INK_SECONDARY + '; margin-bottom:8pt;">次のページから、各担当科の添付資料を番号の順に載せています（各資料の1ページ目の右上に ATTACHMENT と番号を入れています）。</div>');
-    htmlParts.push('<table width="100%" style="border-collapse:collapse;">');
-    appendix.forEach(function (x) {
-      htmlParts.push('<tr>' +
-        '<td width="12%" style="width:12%; border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt; font-weight:bold; color:' + ACCENT + '; white-space:nowrap;">' + x.no + '</td>' +
-        '<td width="30%" style="width:30%; border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt;">' + escapeHtml_(x.department) + '</td>' +
-        '<td style="border-bottom:1px solid ' + HAIRLINE + '; padding:6pt; font-size:10pt; word-break:break-word; overflow-wrap:anywhere;">' + escapeHtml_(x.fileName) + '</td>' +
-      '</tr>');
-    });
-    htmlParts.push('</table>');
-  }
-  var combinedHtml = '<html><body style="font-family: \'Noto Sans JP\', Arial, sans-serif; color:' + INK_PRIMARY + ';">' + htmlParts.join('\n') + '</body></html>';
-
-  var tempDocId = null;
+  var bodyStart = '<html><body style="font-family: \'Noto Sans JP\', Arial, sans-serif; color:' + INK_PRIMARY + ';">';
+  var folder = getOrCreateReportFolder_();
+  var oldFiles = monthlyPdfFiles_(folder, month); // 新しいPDFができたらゴミ箱へ移す
   try {
-    var blob = Utilities.newBlob(combinedHtml, 'text/html', month + '_報告書_temp.html');
-    var resource = { title: month + '月度報告書' };
-    var converted = Drive.Files.insert(resource, blob, { convert: true });
-    tempDocId = converted.id;
-    var pdfBlob = DriveApp.getFileById(tempDocId).getAs('application/pdf');
-    var folder = getOrCreateReportFolder_();
-    var pdfFile = folder.createFile(pdfBlob);
+    // 全体を1つにした PDF(添付資料はリンク)。添付資料を差し込めなかったときは、これをそのまま使う
+    var all = [];
+    segments.forEach(function (seg) { all = all.concat(seg); });
+    var pdfFile = folder.createFile(monthlyHtmlToPdf_(bodyStart + all.join('\n') + '</body></html>', month));
     pdfFile.setName(month + '月度報告書.pdf');
+    // 添付資料を差し込むときは、部分ごとの PDF も作る
+    var parts = [];
+    if (appendix.length) {
+      segments.forEach(function (seg, k) {
+        var pf = folder.createFile(monthlyHtmlToPdf_(bodyStart + seg.join('\n') + '</body></html>', month));
+        pf.setName(month + '月度報告書_部分' + (k + 1) + '.pdf');
+        parts.push(pf.getId());
+      });
+    }
+    oldFiles.forEach(function (f) { try { f.setTrashed(true); } catch (e) {} });
     appendLog(user.email, 'compileMonthlyReportsPdf', month);
     return { fileId: pdfFile.getId(), url: 'https://drive.google.com/file/d/' + pdfFile.getId() + '/view', departmentCount: reports.length,
-      appendix: appendix.map(function (x) { return { no: x.no, fileId: x.fileId, fileName: x.fileName, department: x.department }; }) };
+      parts: parts,
+      appendix: appendix.map(function (x) { return { no: x.no, fileId: x.fileId, fileName: x.fileName, department: x.department, afterPart: x.afterPart }; }) };
   } catch (err) {
     // 【要設定】Drive API(高度なサービス)が未設定の場合もここでエラーになる(ocrCoursePdfと同様)。
     throw new Error('compile_failed:' + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/** HTML を Google ドキュメントに変換し、PDF にして返す(一時的なドキュメントはすぐ消す) */
+function monthlyHtmlToPdf_(html, month) {
+  var tempDocId = null;
+  try {
+    tempDocId = Drive.Files.insert({ title: month + '月度報告書' }, Utilities.newBlob(html, 'text/html', month + '_報告書_temp.html'), { convert: true }).id;
+    return DriveApp.getFileById(tempDocId).getAs('application/pdf');
   } finally {
     if (tempDocId) { try { Drive.Files.remove(tempDocId); } catch (e) {} }
   }
+}
+
+/** その月度の月次PDF(と、結合用の部分のファイル)の一覧 */
+function monthlyPdfFiles_(folder, month) {
+  var out = [], it = folder.searchFiles('title contains \'' + month + '月度報告書\' and trashed = false');
+  while (it.hasNext()) {
+    var f = it.next(), n = f.getName();
+    if (n === month + '月度報告書.pdf' || n.indexOf(month + '月度報告書_部分') === 0) out.push(f);
+  }
+  return out;
+}
+
+/** その月度の作成済みの月次PDF。payload: { month } 戻り値：{ url, createdAt, outdated } (無ければ { url: '' }) */
+function getMonthlyPdfInfo(payload) {
+  var month = String(payload && payload.month || '');
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('month_required');
+  var latest = null;
+  monthlyPdfFiles_(getOrCreateReportFolder_(), month).forEach(function (f) {
+    if (f.getName() !== month + '月度報告書.pdf') return;
+    if (!latest || f.getDateCreated().getTime() > latest.getDateCreated().getTime()) latest = f;
+  });
+  if (!latest) return { url: '' };
+  var createdAt = formatDateTime(latest.getDateCreated());
+  // 作ったあとに、提出済みの報告書が直されたか(画面に「作り直してください」と出す)
+  var outdated = listReports({ month: month }).some(function (r) {
+    return r.status === '提出済み' && String(r.updatedAt || '') > createdAt;
+  });
+  return { url: 'https://drive.google.com/file/d/' + latest.getId() + '/view', createdAt: createdAt, outdated: outdated };
 }
 
 /** "YYYY-MM-DD..."形式の文字列(またはDate)をDateへ変換する。解釈できなければnull */

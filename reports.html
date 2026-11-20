@@ -126,6 +126,10 @@
   .legend-box { background: var(--gw-surface); border: 1px solid var(--gw-border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
   .legend-title { font-size: calc(var(--fs-scale, 1) * 12.5px); color: var(--gw-text-secondary); }
   .legend-title b { color: var(--gw-text); font-weight: 500; }
+  .monthly-pdf-info { margin-top: 6px; }
+  .monthly-pdf-info:empty { display: none; }
+  .monthly-pdf-info a { color: var(--gw-blue, #1a73e8); font-weight: 500; }
+  .monthly-pdf-info .outdated { color: #b06000; }
   .legend-title.past-deadline { color: var(--gw-red); }
   .legend-title.past-deadline b { color: var(--gw-red); }
 
@@ -281,6 +285,7 @@
 
     <div class="legend-box">
       <div class="legend-title" id="deadlineInfo">読み込み中…</div>
+      <div class="legend-title monthly-pdf-info" id="monthlyPdfInfo"></div>
     </div>
 
     <div id="missingBanner" class="missing-banner hidden">
@@ -645,7 +650,21 @@
   }
 
   /** waitFor：先に終わっている必要がある読み込み(初回の担当科の一覧)。月のデータの取得と同時に進める */
+  /** 作成済みの月次PDF(その月度の最新)を表示する */
+  function loadMonthlyPdfInfo() {
+    var el = $('monthlyPdfInfo'), month = currentMonth;
+    el.textContent = '';
+    return callApi('getMonthlyPdfInfo', { month: month }).then(function (res) {
+      if (month !== currentMonth || !res || !res.ok) return;
+      var d = res.data || {};
+      if (String(d.url || '').indexOf('https://drive.google.com/') !== 0) { el.innerHTML = '作成済みの月次PDF：まだありません'; return; }
+      el.innerHTML = '作成済みの月次PDF：<a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">開く</a>（' + escapeHtml(d.createdAt) + ' 作成）' +
+        (d.outdated ? '　<span class="outdated">※作成した後に報告書が直されています。必要なら「月次PDF作成」で作り直してください</span>' : '');
+    }).catch(function () {});
+  }
+
   function loadMonthData(waitFor) {
+    loadMonthlyPdfInfo();
     return Promise.all([
       callApi('listReports', { month: currentMonth }),
       callApi('getReportSubmissionStatus', { month: currentMonth }),
@@ -1050,19 +1069,27 @@
     });
   }
 
-  /** 月次PDFの巻末に、添付資料のページを結合して保存し直す。戻り値：{ url, skipped:[ファイル名] } */
+  /** 月次PDFの各担当科のすぐ後ろに、添付資料のページを結合して保存し直す。戻り値：{ url, skipped:[ファイル名] } */
   function mergeMonthlyAppendix(data, setStatus) {
     var skipped = [];
     return loadPdfLib().then(function (PDFLib) {
-      setStatus('月次PDFを読み込んでいます…');
-      return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: data.fileId, base: true }).then(function (res) {
-        if (!res.ok) throw new Error(res.error);
-        return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64));
-      }).then(function (out) {
-        var chain = Promise.resolve();
-        data.appendix.forEach(function (x, i) {
+      return PDFLib.PDFDocument.create().then(function (out) {
+        var chain = Promise.resolve(), done = 0;
+        // 部分1 → その担当科の添付資料 → 部分2 … の順につなぐ(部分は必ず全部入れる。読めなければ失敗にする)
+        (data.parts || []).forEach(function (partId, k) {
           chain = chain.then(function () {
-            setStatus('添付資料をページとして差し込んでいます…（' + (i + 1) + ' / ' + data.appendix.length + '）');
+            setStatus('月次PDFを読み込んでいます…（' + (k + 1) + ' / ' + data.parts.length + '）');
+            return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: partId, base: true });
+          }).then(function (res) {
+            if (!res.ok) throw new Error(res.error);
+            return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64));
+          }).then(function (src) {
+            return out.copyPages(src, src.getPageIndices());
+          }).then(function (pages) { pages.forEach(function (p) { out.addPage(p); }); });
+          data.appendix.filter(function (x) { return x.afterPart === k; }).forEach(function (x) {
+            chain = chain.then(function () {
+            done++;
+            setStatus('添付資料をページとして差し込んでいます…（' + done + ' / ' + data.appendix.length + '）');
             return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: x.fileId }).then(function (res) {
               if (!res.ok) throw new Error(res.error);
               return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64), { ignoreEncryption: true });
@@ -1075,6 +1102,7 @@
               var first = pages[0], sz = first.getSize();
               first.drawText('ATTACHMENT ' + x.no, { x: sz.width - 120, y: sz.height - 22, size: 10, color: PDFLib.rgb(0.16, 0.47, 0.84) });
             }).catch(function () { skipped.push(x.fileName); });
+            });
           });
         });
         return chain.then(function () {
@@ -1089,7 +1117,7 @@
         });
       }).then(function (bytes) {
         var blob = new Blob([bytes], { type: 'application/pdf' });
-        return uploadInChunks(blob, 'beginMonthlyPdfUpload', { month: currentMonth, baseFileId: data.fileId, size: blob.size },
+        return uploadInChunks(blob, 'beginMonthlyPdfUpload', { month: currentMonth, baseFileId: data.fileId, partFileIds: data.parts || [], size: blob.size },
           'finishMonthlyPdfUpload', {}, function (p) { setStatus('結合したPDFを保存しています…（' + Math.round(p * 100) + '%）'); });
       }).then(function (res) {
         if (!res.ok) throw new Error(res.error);
@@ -1127,7 +1155,7 @@
         openUrl(data.url);
       });
     }).catch(function () { showToast('PDFの作成に失敗しました'); if (win) win.close(); })
-      .then(function () { btn.disabled = false; btn.textContent = label; });
+      .then(function () { btn.disabled = false; btn.textContent = label; loadMonthlyPdfInfo(); });
   }
 
   /* ---------- 役員会の設定(年度ごと一括) ---------- */
