@@ -10,7 +10,7 @@
     if (v === 'large' || v === 'xlarge') document.documentElement.classList.add('fs-' + v);
   } catch (e) {}
 })();</script>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
@@ -267,6 +267,19 @@
   .pdf-note textarea { width: 100%; margin-top: 6px; font-family: inherit; font-size: calc(var(--fs-scale, 1) * 12px); line-height: 1.6; padding: 8px 10px; border: 1px solid var(--gw-border); border-radius: 6px; background: var(--gw-surface); color: var(--gw-text); resize: vertical; }
   @media (max-width: 560px) { .pdf-note-head { flex-direction: column; } }
   .img-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ai-note { background: #fff8e6; border: 1px solid #f5d27a; color: #7a5200; border-radius: 8px; padding: 8px 12px; font-size: calc(var(--fs-scale, 1) * 12px); margin-top: 8px; line-height: 1.6; }
+  .btn-ai { background: linear-gradient(135deg, #d6336c, #7048e8); color: #fff; border: none; }
+  .btn-ai:hover { filter: brightness(1.06); }
+  .btn-ai:disabled { opacity: .6; }
+  .design-panel { border: 1px solid var(--gw-border); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--gw-surface); }
+  .design-panel summary { cursor: pointer; font-weight: 500; font-size: calc(var(--fs-scale, 1) * 13px); }
+  .design-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 10px; }
+  .design-fields .full { grid-column: 1 / -1; }
+  .design-fields label { display: block; font-size: calc(var(--fs-scale, 1) * 11.5px); color: var(--gw-text-secondary); margin-bottom: 3px; }
+  .design-fields input[type=text], .design-fields textarea, .design-fields select { width: 100%; font-family: inherit; font-size: calc(var(--fs-scale, 1) * 13px); padding: 6px 8px; border: 1px solid var(--gw-border); border-radius: 6px; background: var(--gw-bg); color: var(--gw-text); }
+  .design-fields textarea { resize: vertical; line-height: 1.5; }
+  .design-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; font-size: calc(var(--fs-scale, 1) * 12.5px); }
+  @media (max-width: 560px) { .design-fields { grid-template-columns: 1fr; } }
   .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
   .img-grid:empty { display: none; }
   .img-item { border: 1px solid var(--gw-border); border-radius: 8px; padding: 6px; background: var(--gw-bg); text-align: center; }
@@ -425,10 +438,14 @@
     <div class="modal-section-title">投稿文（Instagramのキャプション）</div>
     <div class="caption-tools">
       <span class="counter" id="e-counter"></span>
-      <button type="button" class="btn btn-outline btn-small" id="btnRegenerate">雛形から作り直す</button>
+      <span>
+        <button type="button" class="btn btn-ai btn-small hidden" id="btnAiDraft">✨ AIで投稿文と画像を作る</button>
+        <button type="button" class="btn btn-outline btn-small" id="btnRegenerate">雛形から作り直す</button>
+      </span>
     </div>
     <textarea id="e-caption" spellcheck="false"></textarea>
     <div id="e-warn" class="warn-note hidden"></div>
+    <div id="e-aiNote" class="ai-note hidden"></div>
     <div id="e-pdf" class="pdf-note hidden">
       <div class="pdf-note-head">
         <span id="e-pdfSummary"></span>
@@ -441,8 +458,38 @@
     </div>
 
     <div class="modal-section-title">投稿用の画像（正方形 1080×1080）</div>
+    <div id="designPanel" class="hidden">
+      <div class="img-tools">
+        <button type="button" class="btn btn-outline btn-small hidden" id="btnSaveDesign">画像をすべて保存</button>
+      </div>
+      <div id="designStatus" class="rc-hint" style="margin-top:6px;"></div>
+      <div id="designGrid" class="img-grid"></div>
+      <details class="design-panel">
+        <summary>画像の文字を直す・表紙の背景を変える</summary>
+        <div class="design-tools">
+          <label>表紙の背景：
+            <select id="d-coverBg"><option value="pdf">講座案内PDF（ぼかして敷く）</option><option value="plain">色だけ</option></select>
+          </label>
+          <button type="button" class="btn btn-outline btn-small" id="btnCoverPhoto">表紙に写真を使う</button>
+          <button type="button" class="btn btn-outline btn-small hidden" id="btnClearPhoto">写真を外す</button>
+          <label><input type="checkbox" id="d-pdfPage"> 4枚目に講座案内PDFの1ページ目を付ける</label>
+        </div>
+        <div class="rc-hint" style="margin-top:4px;">表紙の写真は、この画面の中でだけ使います（保存されません。開き直したときは、もう一度選んでください）。</div>
+        <div class="design-fields">
+          <div><label for="d-label">1枚目：ラベル</label><input type="text" id="d-label"></div>
+          <div><label for="d-sub">1枚目：日付など</label><input type="text" id="d-sub"></div>
+          <div class="full"><label for="d-catch">1枚目：キャッチコピー（改行できます）</label><textarea id="d-catch" rows="2"></textarea></div>
+          <div class="full"><label for="d-title">1枚目：講座名</label><input type="text" id="d-title"></div>
+          <div class="full"><label for="d-pointsHeading">2枚目：見出し</label><input type="text" id="d-pointsHeading"></div>
+          <div class="full"><label for="d-points">2枚目：項目（1行に1つ、5つまで）</label><textarea id="d-points" rows="4"></textarea></div>
+          <div class="full"><label for="d-infoHeading">3枚目：見出し</label><input type="text" id="d-infoHeading"></div>
+          <div class="full"><label for="d-infoRows">3枚目：情報（1行に1つ。「項目：内容」の形で）</label><textarea id="d-infoRows" rows="5"></textarea></div>
+          <div class="full"><label for="d-note">3枚目：下の案内</label><input type="text" id="d-note"></div>
+        </div>
+      </details>
+    </div>
     <div class="img-tools">
-      <button type="button" class="btn btn-outline btn-small" id="btnMakeImages">講座案内PDFから画像を作る</button>
+      <button type="button" class="btn btn-outline btn-small" id="btnMakeImages">講座案内PDFの全ページを画像にする</button>
       <button type="button" class="btn btn-outline btn-small hidden" id="btnSaveAllImages">すべて保存</button>
     </div>
     <div id="imgStatus" class="rc-hint" style="margin-top:6px;">講座案内PDFの各ページを、Instagram用の正方形の画像（余白は白）にします。</div>
@@ -613,6 +660,14 @@
     scheduled_date_required: '「投稿予定」にする場合は、投稿予定日を入力してください。',
     invalid_sns_post_type: '投稿の種類を選んでください。',
     invalid_sns_status: 'ステータスが正しくありません。',
+    pdf_not_found: '講座案内PDFが登録されていません。講座進捗ページの「PDF機能」から登録してください。',
+    sns_ai_not_configured: 'AIの設定（鍵）がまだありません。管理者にご連絡ください。',
+    sns_ai_refused: 'AIが作成を断りました。講座案内PDFの内容をご確認ください。',
+    sns_ai_too_long: 'AIの答えが長すぎて途中で切れました。もう一度お試しください。',
+    sns_ai_bad_output: 'AIの答えを読み取れませんでした。もう一度お試しください。',
+    sns_ai_error: 'AIとの通信に失敗しました。時間をおいてお試しください。',
+    sns_personal_info: '講座案内PDFに連絡先や「〇〇様」が多く、名簿の可能性があるため、AIに送りませんでした。',
+    ocr_failed: '講座案内PDFを読み取れませんでした。時間をおいてお試しください。',
     unauthorized: 'ログイン情報の有効期限が切れています。画面を再読み込みして、もう一度ログインしてください。',
     not_allowed: 'このGoogleアカウントは登録されていません。事務局(担当理事)にご連絡ください。',
     unknown_action: 'サーバー側のプログラムが古いままの可能性があります。GAS側を最新のコードに更新・再デプロイのうえ、再度お試しください。'
@@ -1045,6 +1100,318 @@
     }).then(function () { btn.disabled = false; });
   }
 
+
+  /* ---------- AIで投稿文と画像の文言を作る(2026-11-20) ---------- */
+  var aiReady = false;
+  var AI_POST_TYPES = ['募集告知', '開催報告'];
+  var editingDesign = null;   // 画像(3〜4枚組)に載せる文言 { cover, points, info, pdfPage, coverBg }
+  var coverPhoto = null;      // 表紙に使う写真(この画面の中だけ。保存はしない)
+  var pdfSquareCache = {};    // courseId → 講座案内PDFの1ページ目(正方形の画像)
+  var designTimer = null;
+
+  var DS = { navy: '#15305a', blue: '#1f5fbf', sky: '#e9f0fb', bg: '#f5f7fb', accent: '#f2a93b', ink: '#1d2433', sub: '#5b6475', white: '#ffffff' };
+  var FONT = '"Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif';
+
+  function updateAiButton() {
+    var t = selectedType();
+    var show = aiReady && AI_POST_TYPES.indexOf(t) !== -1;
+    $('btnAiDraft').classList.toggle('hidden', !show);
+  }
+
+  function aiDraft() {
+    var courseId = $('e-course').value, type = selectedType();
+    var c = findCourse(courseId);
+    if (!c) { showToast('講座を選んでください'); return; }
+    if (!c.pdfFileId) { showToast('講座案内PDFが登録されていません。講座進捗ページの「PDF機能」から登録してください。'); return; }
+    if ($('e-caption').value.trim() && captionTouched && !confirm('今の投稿文を、AIが作った文章に置き換えます。よろしいですか？')) return;
+    if (!confirm('講座の情報と、講座案内PDFから読み取った文字' + (type === '開催報告' ? '（開催報告では、月次報告書の参加人数と TeMA NEWS の記事も）' : '') +
+      'を AI（Anthropic 社の Claude）に送って、投稿文と画像の文言を作ります。\nメールアドレス・電話番号は伏せ字にして送ります。よろしいですか？')) return;
+    var btn = $('btnAiDraft');
+    btn.disabled = true; btn.textContent = 'AIが作っています…（30秒〜1分）';
+    $('e-aiNote').classList.add('hidden');
+    callApi('generateSnsDraft', { courseId: courseId, postType: type }).then(function (res) {
+      if ($('e-course').value !== courseId || selectedType() !== type) return;
+      if (!res.ok) { showToast(errorMessage(res.error)); return; }
+      $('e-caption').value = res.data.caption;
+      $('e-caption').disabled = false;
+      captionTouched = true;
+      updateCounter();
+      $('e-warn').classList.add('hidden');
+      editingDesign = res.data.design;
+      fillDesignForm();
+      renderDesign();
+      $('e-aiNote').textContent = 'AIが作りました（使った材料：' + (res.data.sources || []).join('・') + '）。AIの文章は間違えることがあります。日時・会場・料金などは必ず確かめて直してください。';
+      $('e-aiNote').classList.remove('hidden');
+    }).catch(function () { showToast('AIで作れませんでした（通信）。時間をおいてお試しください。'); })
+      .then(function () { btn.disabled = false; btn.textContent = '✨ AIで投稿文と画像を作る'; });
+  }
+
+  /* --- 画像の文字を直す欄 --- */
+  function fillDesignForm() {
+    var d = editingDesign;
+    $('designPanel').classList.toggle('hidden', !d);
+    if (!d) return;
+    $('d-label').value = d.cover.label || '';
+    $('d-catch').value = d.cover.catchcopy || '';
+    $('d-title').value = d.cover.title || '';
+    $('d-sub').value = d.cover.sub || '';
+    $('d-pointsHeading').value = d.points.heading || '';
+    $('d-points').value = (d.points.items || []).join('\n');
+    $('d-infoHeading').value = d.info.heading || '';
+    $('d-infoRows').value = (d.info.rows || []).map(function (r) { return r.label + '：' + r.value; }).join('\n');
+    $('d-note').value = d.info.note || '';
+    $('d-coverBg').value = d.coverBg === 'pdf' ? 'pdf' : 'plain';
+    $('d-pdfPage').checked = d.pdfPage !== false;
+    $('btnClearPhoto').classList.toggle('hidden', !coverPhoto);
+  }
+  function readDesignForm() {
+    var d = editingDesign;
+    if (!d) return;
+    d.cover = { label: $('d-label').value, catchcopy: $('d-catch').value, title: $('d-title').value, sub: $('d-sub').value };
+    d.points = { heading: $('d-pointsHeading').value, items: $('d-points').value.split('\n').map(function (t) { return t.trim(); }).filter(Boolean).slice(0, 5) };
+    d.info = {
+      heading: $('d-infoHeading').value,
+      rows: $('d-infoRows').value.split('\n').map(function (l) {
+        var m = l.match(/^([^：:]{1,20})[：:]\s*(.*)$/);
+        return m ? { label: m[1].trim(), value: m[2].trim() } : { label: '', value: l.trim() };
+      }).filter(function (r) { return r.label || r.value; }).slice(0, 7),
+      note: $('d-note').value
+    };
+    d.coverBg = $('d-coverBg').value;
+    d.pdfPage = $('d-pdfPage').checked;
+  }
+  function onDesignInput() {
+    readDesignForm();
+    clearTimeout(designTimer);
+    designTimer = setTimeout(renderDesign, 500);
+  }
+  function pickCoverPhoto() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      var url = URL.createObjectURL(f), img = new Image();
+      img.onload = function () { coverPhoto = img; $('btnClearPhoto').classList.remove('hidden'); renderDesign(); };
+      img.onerror = function () { URL.revokeObjectURL(url); showToast('写真を読み込めませんでした'); };
+      img.src = url;
+    });
+    inp.click();
+  }
+
+  /* --- 描画の部品 --- */
+  var NO_LINE_START = '、。，．,.）)」』】〕！？!?ー…・：:；;ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ々';
+  /** 文字を幅に合わせて行に分ける(行頭に句読点などが来ないようにする) */
+  function wrapLines(ctx, text, maxW) {
+    var out = [];
+    String(text || '').split('\n').forEach(function (para) {
+      var chars = Array.from(para), line = '';
+      for (var i = 0; i < chars.length; i++) {
+        var ch = chars[i];
+        if (line && ctx.measureText(line + ch).width > maxW && NO_LINE_START.indexOf(ch) === -1) {
+          out.push(line); line = ch;
+        } else line += ch;
+      }
+      out.push(line);
+    });
+    return out;
+  }
+  /** 枠(x, y, w, h)に収まる大きさで文字を描く。戻り値：描いた高さ */
+  function fitText(ctx, text, o) {
+    var size = o.size, lines;
+    for (; size >= o.min; size -= 2) {
+      ctx.font = (o.weight || 400) + ' ' + size + 'px ' + FONT;
+      lines = wrapLines(ctx, text, o.w);
+      // 最後の行が1〜2文字だけになる(「変／化」のような)ときは、もう少し小さくして1行に収める
+      var orphan = lines.length > 1 && Array.from(lines[lines.length - 1]).length <= 2 && size - 2 >= o.min;
+      if (lines.length * size * o.lh <= o.h && (!o.maxLines || lines.length <= o.maxLines) && !orphan) break;
+    }
+    if (size < o.min) {
+      size = o.min;
+      ctx.font = (o.weight || 400) + ' ' + size + 'px ' + FONT;
+      lines = wrapLines(ctx, text, o.w);
+      var max = Math.max(1, Math.min(o.maxLines || 99, Math.floor(o.h / (size * o.lh))));
+      if (lines.length > max) { lines = lines.slice(0, max); lines[max - 1] = lines[max - 1].replace(/.$/, '…'); }
+    }
+    ctx.fillStyle = o.color; ctx.textBaseline = 'top'; ctx.textAlign = o.align || 'left';
+    var x = o.align === 'center' ? o.x + o.w / 2 : o.x;
+    var total = lines.length * size * o.lh;
+    var y0 = o.valign === 'bottom' ? o.y + o.h - total : (o.valign === 'middle' ? o.y + (o.h - total) / 2 : o.y);
+    lines.forEach(function (l, i) { ctx.fillText(l, x, y0 + i * size * o.lh + (size * (o.lh - 1)) / 2); });
+    ctx.textAlign = 'left';
+    return total;
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function drawCoverImage(ctx, img, S) {
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    var k = Math.max(S / iw, S / ih), w = iw * k, h = ih * k;
+    ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+  }
+  function footer(ctx, S, no, total, dark) {
+    ctx.font = '500 24px ' + FONT; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = dark ? 'rgba(255,255,255,.75)' : DS.sub;
+    ctx.fillText('日本繊維商品めんてなんす研究会（TeMA）', 80, S - 50);
+    ctx.textAlign = 'right';
+    ctx.fillText(no + ' / ' + total, S - 80, S - 50);
+    ctx.textAlign = 'left';
+  }
+
+  /* --- 1枚目：表紙 --- */
+  function drawCover(ctx, S, d, bgImg, total) {
+    if (bgImg) {
+      try { ctx.filter = 'blur(' + (coverPhoto ? 0 : 6) + 'px)'; } catch (e) {}
+      drawCoverImage(ctx, bgImg, S);
+      try { ctx.filter = 'none'; } catch (e) {}
+      var g = ctx.createLinearGradient(0, 0, 0, S);
+      g.addColorStop(0, coverPhoto ? 'rgba(12,28,54,.35)' : 'rgba(12,28,54,.72)');
+      g.addColorStop(0.55, 'rgba(12,28,54,.78)');
+      g.addColorStop(1, 'rgba(12,28,54,.92)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+    } else {
+      var g2 = ctx.createLinearGradient(0, 0, S, S);
+      g2.addColorStop(0, DS.navy); g2.addColorStop(1, DS.blue);
+      ctx.fillStyle = g2; ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = 'rgba(255,255,255,.06)';
+      ctx.beginPath(); ctx.arc(S * 0.88, S * 0.12, 260, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(S * 0.05, S * 0.95, 200, 0, Math.PI * 2); ctx.fill();
+    }
+    // ラベル
+    var label = d.cover.label || '';
+    if (label) {
+      ctx.font = '700 34px ' + FONT;
+      var lw = ctx.measureText(label).width + 56;
+      ctx.fillStyle = DS.accent; roundRect(ctx, 80, 90, lw, 64, 32); ctx.fill();
+      ctx.fillStyle = DS.navy; ctx.textBaseline = 'middle'; ctx.fillText(label, 108, 123);
+    }
+    ctx.font = '900 34px ' + FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText('TeMA', S - 80, 123); ctx.textAlign = 'left';
+    // キャッチコピー・講座名・日付
+    fitText(ctx, d.cover.catchcopy, { x: 80, y: 230, w: S - 160, h: 400, size: 96, min: 54, weight: 900, lh: 1.3, color: DS.white, valign: 'bottom' });
+    ctx.fillStyle = DS.accent; ctx.fillRect(80, 660, 120, 8);
+    fitText(ctx, d.cover.title, { x: 80, y: 700, w: S - 160, h: 150, size: 48, min: 32, weight: 700, lh: 1.4, color: DS.white, maxLines: 3 });
+    fitText(ctx, d.cover.sub, { x: 80, y: 880, w: S - 160, h: 70, size: 42, min: 30, weight: 700, lh: 1.3, color: DS.accent, maxLines: 1 });
+    footer(ctx, S, 1, total, true);
+  }
+
+  /* --- 2枚目：学べること / 扱ったこと --- */
+  function drawPoints(ctx, S, d, total) {
+    ctx.fillStyle = DS.bg; ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = DS.blue; ctx.fillRect(0, 0, S, 16);
+    ctx.font = '900 30px ' + FONT; ctx.fillStyle = DS.blue; ctx.textBaseline = 'top';
+    ctx.fillText('POINT', 80, 80);
+    var hh = fitText(ctx, d.points.heading, { x: 80, y: 125, w: S - 160, h: 150, size: 64, min: 44, weight: 900, lh: 1.3, color: DS.navy, maxLines: 2 });
+    var items = (d.points.items || []).slice(0, 5);
+    var top = 125 + hh + 50, bottom = S - 110, n = Math.max(1, items.length), gap = 24;
+    var ch = Math.min(200, (bottom - top - gap * (n - 1)) / n);
+    items.forEach(function (t, i) {
+      var y = top + i * (ch + gap);
+      ctx.fillStyle = DS.white; roundRect(ctx, 80, y, S - 160, ch, 24); ctx.fill();
+      ctx.fillStyle = DS.blue; ctx.beginPath(); ctx.arc(80 + 62, y + ch / 2, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '900 36px ' + FONT; ctx.fillStyle = DS.white; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), 80 + 62, y + ch / 2 + 1); ctx.textAlign = 'left';
+      fitText(ctx, t, { x: 80 + 124, y: y + 18, w: S - 160 - 124 - 36, h: ch - 36, size: 40, min: 28, weight: 700, lh: 1.4, color: DS.ink, valign: 'middle' });
+    });
+    footer(ctx, S, 2, total, false);
+  }
+
+  /* --- 3枚目：開催の情報 --- */
+  function drawInfo(ctx, S, d, total) {
+    ctx.fillStyle = DS.white; ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = DS.navy; ctx.fillRect(0, 0, S, 210);
+    fitText(ctx, d.info.heading, { x: 80, y: 60, w: S - 160, h: 100, size: 64, min: 44, weight: 900, lh: 1.25, color: DS.white, maxLines: 1, valign: 'middle' });
+    var rows = (d.info.rows || []).slice(0, 7);
+    var noteH = d.info.note ? 130 : 0;
+    var top = 260, bottom = S - 110 - noteH - (noteH ? 30 : 0), n = Math.max(1, rows.length);
+    var rh = Math.min(140, (bottom - top) / n);
+    rows.forEach(function (r, i) {
+      var y = top + i * rh;
+      fitText(ctx, r.label, { x: 80, y: y + 10, w: 200, h: rh - 20, size: 34, min: 24, weight: 700, lh: 1.3, color: DS.blue, valign: 'middle' });
+      fitText(ctx, r.value, { x: 300, y: y + 10, w: S - 380, h: rh - 20, size: 40, min: 26, weight: 700, lh: 1.35, color: DS.ink, valign: 'middle' });
+      ctx.fillStyle = '#dfe4ec'; ctx.fillRect(80, y + rh - 1, S - 160, 2);
+    });
+    if (noteH) {
+      var ny = S - 110 - noteH;
+      ctx.fillStyle = '#fff4e2'; roundRect(ctx, 80, ny, S - 160, noteH, 24); ctx.fill();
+      fitText(ctx, d.info.note, { x: 120, y: ny + 16, w: S - 240, h: noteH - 32, size: 38, min: 26, weight: 700, lh: 1.35, color: '#7a4a00', valign: 'middle', align: 'center' });
+    }
+    footer(ctx, S, 3, total, false);
+  }
+
+  function getPdfSquare(courseId) {
+    if (pdfSquareCache[courseId]) return Promise.resolve(pdfSquareCache[courseId]);
+    return Promise.all([loadPdfJs(), getPdfBytes(courseId)]).then(function (r) {
+      var lib = r[0], bytes = r[1], facePromise = null;
+      return openPdf(lib, bytes, 'paths').then(function (pathsDoc) {
+        return renderPageToSquare({ paths: pathsDoc, openFontFace: function () { return facePromise || (facePromise = openPdf(lib, bytes, 'fontface')); } }, 1);
+      });
+    }).then(function (dataUrl) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { pdfSquareCache[courseId] = { img: img, url: dataUrl }; resolve(pdfSquareCache[courseId]); };
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    });
+  }
+
+  /** 画像(3〜4枚組)を作って並べる */
+  function renderDesign() {
+    var d = editingDesign, grid = $('designGrid');
+    if (!d) { grid.innerHTML = ''; $('designStatus').textContent = ''; $('btnSaveDesign').classList.add('hidden'); return; }
+    var courseId = $('e-course').value, c = findCourse(courseId);
+    var needPdf = c && c.pdfFileId && (d.coverBg === 'pdf' || d.pdfPage);
+    $('designStatus').textContent = '画像を作っています…';
+    var allText = [d.cover.label, d.cover.catchcopy, d.cover.title, d.cover.sub, d.points.heading, (d.points.items || []).join(''),
+      d.info.heading, (d.info.rows || []).map(function (r) { return r.label + r.value; }).join(''), d.info.note, 'TeMA POINT 0123456789/ 日本繊維商品めんてなんす研究会（）'].join('');
+    var fontsReady = (document.fonts && document.fonts.load)
+      ? Promise.all(['400', '700', '900'].map(function (w) { return document.fonts.load(w + ' 40px "Noto Sans JP"', allText); })).catch(function () {})
+      : Promise.resolve();
+    var pdfReady = needPdf ? getPdfSquare(courseId).catch(function () { return null; }) : Promise.resolve(null);
+    Promise.all([fontsReady, pdfReady]).then(function (r) {
+      if ($('e-course').value !== courseId || editingDesign !== d) return;
+      var pdf = r[1];
+      var withPdf = d.pdfPage && pdf;
+      var total = withPdf ? 4 : 3, S = 1080;
+      var urls = [];
+      [function (ctx) { drawCover(ctx, S, d, coverPhoto || (d.coverBg === 'pdf' && pdf ? pdf.img : null), total); },
+       function (ctx) { drawPoints(ctx, S, d, total); },
+       function (ctx) { drawInfo(ctx, S, d, total); }].forEach(function (draw) {
+        var cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+        draw(cv.getContext('2d'));
+        urls.push(cv.toDataURL('image/jpeg', 0.92));
+      });
+      if (withPdf) urls.push(pdf.url);
+      grid.innerHTML = '';
+      var base = safeFileName(c ? c.name : '講座');
+      urls.forEach(function (u, i) {
+        var item = document.createElement('div');
+        item.className = 'img-item';
+        item.innerHTML = '<img alt="' + (i + 1) + '枚目"><a>' + (i + 1) + '枚目を保存</a>';
+        item.querySelector('img').src = u;
+        var a = item.querySelector('a'); a.href = u; a.download = base + '_' + selectedType() + '_' + (i + 1) + '.jpg';
+        grid.appendChild(item);
+      });
+      $('designStatus').textContent = total + '枚組の画像です（Instagramでは、この順に選ぶと1つの投稿にまとめられます）。文字は下の「画像の文字を直す」で変えられます。';
+      $('btnSaveDesign').classList.remove('hidden');
+      if (needPdf && !pdf) $('designStatus').textContent += '　※講座案内PDFを読み込めなかったため、PDFを使う部分は省きました。';
+    });
+  }
+  function saveDesignImages() {
+    var links = Array.prototype.slice.call($('designGrid').querySelectorAll('a[download]'));
+    links.forEach(function (a, i) { setTimeout(function () { a.click(); }, i * 400); });
+  }
+  function resetDesign(design) {
+    editingDesign = design || null;
+    coverPhoto = null;
+    $('e-aiNote').classList.add('hidden');
+    fillDesignForm();
+    renderDesign();
+  }
+
   function saveAllImages() {
     var links = Array.prototype.slice.call($('imgGrid').querySelectorAll('a[download]'));
     links.forEach(function (a, i) { setTimeout(function () { a.click(); }, i * 400); });
@@ -1312,6 +1679,8 @@
 
   function onSourceChanged() {
     clearImages();
+    resetDesign(null);
+    updateAiButton();
     // 講座や種類を変えたとき：手直しをしていなければ作り直す。手直し済みなら確認する
     if (captionTouched && $('e-caption').value.trim() && !confirm('講座または種類が変わりました。雛形から投稿文を作り直しますか？\n（手直しした内容は消えます。「キャンセル」で今の文章のまま残します）')) return;
     generateCaption();
@@ -1335,6 +1704,8 @@
     $('e-warn').classList.add('hidden');
     $('e-pdf').classList.add('hidden');
     clearImages();
+    resetDesign(p && p.design ? p.design : null);
+    updateAiButton();
     if (p) {
       $('e-caption').value = p.caption || '';
       captionTouched = true; // 保存済みの文章は「手直し済み」とみなし、勝手に作り直さない
@@ -1360,7 +1731,8 @@
       status: $('e-status').value,
       scheduledDate: $('e-status').value === '投稿予定' ? $('e-scheduledDate').value : '',
       postedDate: $('e-status').value === '投稿済み' ? $('e-postedDate').value : '',
-      postUrl: $('e-status').value === '投稿済み' ? $('e-postUrl').value.trim() : ''
+      postUrl: $('e-status').value === '投稿済み' ? $('e-postUrl').value.trim() : '',
+      design: editingDesign || null
     };
     if (!payload.courseId) { showToast('講座を選んでください'); return; }
     if (!payload.caption.trim()) { showToast('投稿文が空です'); return; }
@@ -1434,6 +1806,8 @@
       templates = d.templates || {};
       attendance = d.attendance || {};
       if (d.postTypes && d.postTypes.length) POST_TYPES = d.postTypes;
+      aiReady = !!d.aiReady;
+      if (d.aiPostTypes && d.aiPostTypes.length) AI_POST_TYPES = d.aiPostTypes;
       renderAll();
     }).catch(function () {
       $('loadingState').textContent = 'データの読み込みに失敗しました。時間をおいて再度お試しください。';
@@ -1586,6 +1960,15 @@
     });
     $('e-status').addEventListener('change', updateStatusFields);
     $('btnMakeImages').addEventListener('click', makeImages);
+    $('btnAiDraft').addEventListener('click', aiDraft);
+    $('btnSaveDesign').addEventListener('click', saveDesignImages);
+    $('btnCoverPhoto').addEventListener('click', pickCoverPhoto);
+    $('btnClearPhoto').addEventListener('click', function () { coverPhoto = null; $('btnClearPhoto').classList.add('hidden'); renderDesign(); });
+    ['d-label', 'd-catch', 'd-title', 'd-sub', 'd-pointsHeading', 'd-points', 'd-infoHeading', 'd-infoRows', 'd-note'].forEach(function (id) {
+      $(id).addEventListener('input', onDesignInput);
+    });
+    $('d-coverBg').addEventListener('change', onDesignInput);
+    $('d-pdfPage').addEventListener('change', onDesignInput);
     $('btnSaveAllImages').addEventListener('click', saveAllImages);
     $('btnPdfReload').addEventListener('click', function () {
       if (captionTouched && $('e-caption').value.trim() && !confirm('PDFを読み直して、雛形から投稿文を作り直します。手直しした内容は消えます。よろしいですか？')) return;

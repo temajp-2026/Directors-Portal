@@ -131,6 +131,12 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 SNS：AIで投稿文と画像の文言を作る】SnsPosts シートに列「designJson」を足します
+ *   (シートを使うときに自動で足されます。initializeSpreadsheet の再実行は不要)。
+ *   - 「募集告知」「開催報告」で、講座案内PDFの読み取り結果(と、開催報告では参加人数・TeMA NEWS の記事)を
+ *     AI(Anthropic 社の Claude)に送り、投稿文とハッシュタグ、画像(3〜4枚組)に載せる文言を作る(generateSnsDraft)。
+ *     画像そのものは画面で、決まったデザインの枠に文言を流し込んで作る。AIの鍵は TeMA NEWS と同じ ANTHROPIC_API_KEY。
+ *   - 名簿の確認と連絡先の伏せ字は TeMA NEWS と同じ仕組み(newsScanPersonalInfo_)。
  * ・【2026-11-20 月次PDF：添付資料はその担当科のすぐ後ろに・作成済みのPDFを開ける】新しいシートや列の追加はありません。
  *   - 添付資料を差し込む担当科のところで、月次PDFを「部分」に分けて作り(…月度報告書_部分N.pdf)、画面で
  *     部分1 → その科の添付資料 → 部分2 … の順に結合する。結合後、部分のファイルはゴミ箱へ。
@@ -272,7 +278,8 @@ var MATERIAL_HEADERS = [
 var SNS_POST_HEADERS = [
   'id', 'courseId', 'courseName', 'platform', 'postType', 'caption',
   'status', 'scheduledDate', 'postedDate', 'postUrl',
-  'createdBy', 'createdAt', 'updatedBy', 'updatedAt', 'deletedBy', 'deletedAt'
+  'createdBy', 'createdAt', 'updatedBy', 'updatedAt', 'deletedBy', 'deletedAt',
+  'designJson' // 画像(3〜4枚組)に載せる文言(2026-11-20)
 ];
 // SNS投稿文の雛形(種類ごとに1行)。スプレッドシート上で自由に書き換えられる。
 var SNS_TEMPLATE_HEADERS = ['種類', '本文', 'ハッシュタグ', '使える差し込み項目'];
@@ -685,7 +692,7 @@ function handleRequest(e) {
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
     // 例：2人の理事が同じ講座のチェック項目を同時に付けた場合に、片方の変更が消えるのを防ぐ。
     // 時間のかかる処理(PDF一本化・ファイルのアップロード)は、他の人の保存を待たせないよう対象外にする。
-    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'ocrNewsPageImage', 'putUploadChunk', 'uploadReportAttachment',
+    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'generateSnsDraft', 'ocrNewsPageImage', 'putUploadChunk', 'uploadReportAttachment',
       'uploadReportInlineImage', 'uploadMaterialDirector', 'uploadMaterialLecturer'];
     if (!/^(list|get)/.test(action) && LOCK_EXEMPT.indexOf(action) === -1) {
       lock = LockService.getScriptLock();
@@ -861,6 +868,9 @@ function handleRequest(e) {
         break;
       case 'getNewsPhoto':
         result = getNewsPhoto(body.payload);
+        break;
+      case 'generateSnsDraft':
+        result = generateSnsDraft(body.payload, user);
         break;
       case 'saveNewsArticle':
         result = saveNewsArticle(body.payload, user);
@@ -2544,6 +2554,9 @@ function snsPostRowToObject_(values) {
   obj.createdAt = formatDateTime(obj.createdAt);
   obj.updatedAt = formatDateTime(obj.updatedAt);
   obj.deletedAt = formatDateTime(obj.deletedAt);
+  obj.design = null;
+  try { obj.design = obj.designJson ? JSON.parse(obj.designJson) : null; } catch (e) {}
+  delete obj.designJson;
   return obj;
 }
 
@@ -2602,7 +2615,9 @@ function listSnsData(payload) {
     posts: listSnsPosts_(),
     templates: listSnsTemplates_(),
     postTypes: SNS_POST_TYPES,
-    attendance: attendanceFromReports_(courses)
+    attendance: attendanceFromReports_(courses),
+    aiReady: !!PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY'),
+    aiPostTypes: SNS_AI_POST_TYPES
   };
 }
 
@@ -2639,6 +2654,7 @@ function saveSnsPost(payload, user) {
     courseName = courseSheet.getRange(cRow, courseCol('名称')).getValue() || '';
   }
 
+  var designJson = payload.design ? JSON.stringify(sanitizeSnsDesign_(payload.design)) : '';
   var sheet = getSnsPostSheet_();
   var now = new Date();
   var who = user.name || user.email;
@@ -2652,6 +2668,7 @@ function saveSnsPost(payload, user) {
       status, scheduledDate, postedDate, safeHttpUrl_(payload.postUrl)
     ]]));
     sheet.getRange(rowIndex, snsPostCol_('updatedBy'), 1, 2).setValues(safeRows_([[who, now]]));
+    if (payload.design !== undefined) sheet.getRange(rowIndex, snsPostCol_('designJson')).setValue(safeCell_(designJson));
     appendLog(user.email, 'saveSnsPost', courseName + '：' + postType + '(' + status + ')');
     return snsPostRowToObject_(sheet.getRange(rowIndex, 1, 1, SNS_POST_HEADERS.length).getValues()[0]);
   }
@@ -2659,7 +2676,8 @@ function saveSnsPost(payload, user) {
     id: Utilities.getUuid(), courseId: payload.courseId || '', courseName: courseName, platform: 'Instagram',
     postType: postType, caption: caption, status: status, scheduledDate: scheduledDate, postedDate: postedDate,
     postUrl: safeHttpUrl_(payload.postUrl),
-    createdBy: who, createdAt: now, updatedBy: who, updatedAt: now, deletedBy: '', deletedAt: ''
+    createdBy: who, createdAt: now, updatedBy: who, updatedAt: now, deletedBy: '', deletedAt: '',
+    designJson: designJson
   };
   sheet.appendRow(safeRow_(SNS_POST_HEADERS.map(function (h) { return obj[h]; })));
   appendLog(user.email, 'saveSnsPost', courseName + '：' + postType + '(' + status + '・新規)');
@@ -4724,11 +4742,21 @@ function generateNewsDraft(payload, user) {
   var avoid = String(payload.avoid || '').slice(0, 1000);
   var userText = '次の資料から、TeMA NEWS の講座レポートのたたき台を作ってください。\n\n' +
     '# 書かない項目\n' + (avoid.trim() || '(指定なし)') + '\n\n# 資料\n' + scan.text;
+  var r = callClaudeJson_(key, NEWS_SYSTEM_PROMPT, userText, NEWS_SCHEMA, 8000, 'news');
+  appendLog(user.email, 'generateNewsDraft', payload.courseId + ' ' + r.usageText);
+  return { content: sanitizeNewsContent_(r.content) };
+}
+
+/**
+ * Anthropic の API(Claude)を呼び、決まった形(JSON)の答えを受け取る(TeMA NEWS と SNS で共通)。
+ * prefix はエラーの名前の頭(news / sns)。戻り値：{ content, usageText }
+ */
+function callClaudeJson_(key, system, userText, schema, maxTokens, prefix) {
   var body = {
     model: NEWS_AI_MODEL,
-    max_tokens: 8000,
-    system: NEWS_SYSTEM_PROMPT,
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: NEWS_SCHEMA } },
+    max_tokens: maxTokens,
+    system: system,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: schema } },
     fallbacks: 'default',
     messages: [{ role: 'user', content: userText }]
   };
@@ -4741,14 +4769,134 @@ function generateNewsDraft(payload, user) {
   if (code !== 200) {
     var msg = '';
     try { msg = JSON.parse(res.getContentText()).error.message || ''; } catch (e) {}
-    throw new Error('news_ai_error:' + code + (msg ? ' ' + String(msg).slice(0, 120) : ''));
+    throw new Error(prefix + '_ai_error:' + code + (msg ? ' ' + String(msg).slice(0, 120) : ''));
   }
   var data = JSON.parse(res.getContentText());
-  if (data.stop_reason === 'refusal') throw new Error('news_ai_refused');
-  if (data.stop_reason === 'max_tokens') throw new Error('news_ai_too_long');
+  if (data.stop_reason === 'refusal') throw new Error(prefix + '_ai_refused');
+  if (data.stop_reason === 'max_tokens') throw new Error(prefix + '_ai_too_long');
   var text = (data.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
   var content;
-  try { content = JSON.parse(text); } catch (e2) { throw new Error('news_ai_bad_output'); }
-  appendLog(user.email, 'generateNewsDraft', payload.courseId + ' 入力' + (data.usage ? data.usage.input_tokens : '?') + '／出力' + (data.usage ? data.usage.output_tokens : '?'));
-  return { content: sanitizeNewsContent_(content) };
+  try { content = JSON.parse(text); } catch (e2) { throw new Error(prefix + '_ai_bad_output'); }
+  return { content: content, usageText: '入力' + (data.usage ? data.usage.input_tokens : '?') + '／出力' + (data.usage ? data.usage.output_tokens : '?') };
+}
+
+/* ===== SNS：AIで投稿文と画像の文言を作る(2026-11-20) ===== */
+var SNS_AI_POST_TYPES = ['募集告知', '開催報告'];
+
+var SNS_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['caption', 'hashtags', 'cover', 'points', 'info'],
+  properties: {
+    caption: { type: 'string' },
+    hashtags: { type: 'array', items: { type: 'string' } },
+    cover: { type: 'object', additionalProperties: false, required: ['label', 'catchcopy', 'title', 'sub'], properties: {
+      label: { type: 'string' }, catchcopy: { type: 'string' }, title: { type: 'string' }, sub: { type: 'string' } } },
+    points: { type: 'object', additionalProperties: false, required: ['heading', 'items'], properties: {
+      heading: { type: 'string' }, items: { type: 'array', items: { type: 'string' } } } },
+    info: { type: 'object', additionalProperties: false, required: ['heading', 'rows', 'note'], properties: {
+      heading: { type: 'string' },
+      rows: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['label', 'value'], properties: { label: { type: 'string' }, value: { type: 'string' } } } },
+      note: { type: 'string' } } }
+  }
+};
+
+var SNS_SYSTEM_PROMPT = [
+  'あなたは、NPO法人 日本繊維商品めんてなんす研究会(TeMA)の Instagram の担当者です。',
+  '読み手は、クリーニング店の経営者・スタッフや、繊維製品のメンテナンスに関わる人です。',
+  '講座の資料をもとに、Instagram の投稿文(キャプション)と、3枚組の画像に載せる短い文言を日本語で作ります。',
+  '',
+  '# 守ること',
+  '- 資料に書かれていることだけを使い、資料にない事実・数字・日時・料金・発言を作らない。分からない項目は書かない。',
+  '- 受講者・申込者など、講師以外の個人の名前や連絡先は書かない。講師の名前と所属は、資料にあれば書いてよい。',
+  '- 申込方法は「プロフィールのリンク(tema.jp)から」と案内する。URL は書かない。',
+  '- 誇張しすぎず、信頼できる研究会らしい、親しみのある文体にする。絵文字は控えめに(1行に1つまで、全体で5つ程度まで)。',
+  '',
+  '# 投稿文(caption)',
+  '- 最初の1〜2行で、読み手が「自分のことだ」と思える問いかけや気づきを書く(ここがフィードで見える部分)。',
+  '- そのあと、講座の内容・得られること、日時・会場などを読みやすく改行して書く。300〜600字程度。',
+  '- ハッシュタグは caption に入れず、hashtags に分けて返す(5〜10個。「#」を付け、空白を入れない)。決まったハッシュタグとして渡されたものと同じものは入れない。',
+  '',
+  '# 画像の文言(1080×1080 の正方形に大きく載せるので、短く)',
+  '- cover(1枚目・表紙)：label は10字以内(例：講座のご案内)。catchcopy は目を引くひとこと(24字以内。改行したい所に改行を入れてよい)。title は講座名(40字以内)。sub は開催日など(30字以内)。',
+  '- points(2枚目)：heading は20字以内。items は3〜4個、各30字以内で、講座で学べること・得られること。',
+  '- info(3枚目)：heading は15字以内。rows は2〜6行(label 6字以内、value 40字以内)。note は申込などの案内(40字以内)。',
+].join('\n');
+
+var SNS_TYPE_PROMPTS = {
+  '募集告知': '# 今回の投稿：募集告知\n講座への参加を呼びかける投稿です。cover の label は「講座のご案内」など。points は「この講座で学べること」。info は日時・会場・講師・対象・定員・参加費・申込締切のうち、資料にあるものを載せ、note で申込方法を案内してください。',
+  '開催報告': '# 今回の投稿：開催報告\n開催した講座を報告する投稿です。参加した方へのお礼を入れてください。cover の label は「開催報告」など。points は「講座で扱ったこと」(具体的なノウハウの中身は書きすぎない)。info は開催日・会場・講師・参加人数など資料にあるものを載せ、note で今後の講座の案内(プロフィールのリンクから)をしてください。'
+};
+
+/** 画像の文言を確かめて、保存できる形にする */
+function sanitizeSnsDesign_(d) {
+  var s = function (v, max) { return String(v == null ? '' : v).slice(0, max); };
+  d = d || {};
+  var c = d.cover || {}, p = d.points || {}, f = d.info || {};
+  return {
+    cover: { label: s(c.label, 30), catchcopy: s(c.catchcopy, 80), title: s(c.title, 120), sub: s(c.sub, 80) },
+    points: { heading: s(p.heading, 60), items: (Array.isArray(p.items) ? p.items : []).slice(0, 5).map(function (t) { return s(t, 80); }) },
+    info: { heading: s(f.heading, 40),
+      rows: (Array.isArray(f.rows) ? f.rows : []).slice(0, 7).map(function (r) { return { label: s(r && r.label, 20), value: s(r && r.value, 100) }; }),
+      note: s(f.note, 100) },
+    pdfPage: d.pdfPage === false ? false : true, // 4枚目に講座案内PDFの1ページ目を付けるか
+    coverBg: d.coverBg === 'pdf' ? 'pdf' : 'plain' // 表紙の背景(pdf：講座案内PDFの1ページ目をぼかして敷く／plain：色だけ)
+  };
+}
+
+/**
+ * AIで投稿文と画像の文言を作る。payload: { courseId, postType }
+ * 戻り値：{ caption(本文＋ハッシュタグ), design, sources:[使った材料の説明] }
+ */
+function generateSnsDraft(payload, user) {
+  if (!payload || !payload.courseId) throw new Error('course_not_found');
+  var postType = String(payload.postType || '');
+  if (SNS_AI_POST_TYPES.indexOf(postType) === -1) throw new Error('invalid_sns_post_type');
+  var key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!key) throw new Error('sns_ai_not_configured');
+  var cs = getCourseSheet();
+  var rowIndex = findCourseRowIndex(cs, payload.courseId);
+  if (rowIndex === -1) throw new Error('course_not_found');
+  var c = courseRowToObject(cs.getRange(rowIndex, 1, 1, COURSE_HEADERS.length).getValues()[0]);
+  if (!c.pdfFileId) throw new Error('pdf_not_found');
+  var sources = ['講座の情報'];
+  var parts = ['【講座の情報】', '講座名：' + c.name,
+    '開催日：' + (c.eventDate || '未定') + (c.startTime ? '　' + c.startTime + (c.endTime ? '〜' + c.endTime : '') : ''),
+    '会場：' + (c.venue || ''), '研修形式：' + (c.format || ''), '担当科：' + (c.department || '')];
+  // 講座案内PDF(読み取り結果は保存してあるものを使う。無ければここで読み取る)
+  var pdfText = String(getCoursePdfText({ courseId: c.id }, user).text || '');
+  if (pdfText.trim()) { parts.push('\n【講座案内PDF】\n' + pdfText.slice(0, 20000)); sources.push('講座案内PDF'); }
+  if (postType === '開催報告') {
+    // 参加人数(月次報告書の講座の行だけ。本文・報告者名は使わない)
+    var total = 0, found = false;
+    newsReportsForCourse_(c).forEach(function (r) {
+      (r.courses || []).forEach(function (e) {
+        if (normalizeCourseTitle_(e.title) !== normalizeCourseTitle_(c.name)) return;
+        found = true; total += Number(e.venueCount || 0) + Number(e.zoomCount || 0);
+      });
+    });
+    if (found) { parts.push('\n【参加人数】\n' + total + '名'); sources.push('月次報告書の参加人数'); }
+    // TeMA NEWS の記事(あれば。理事が手直しした内容なので、そのまま材料にする)
+    var art = listNewsArticles({ courseId: c.id })[0];
+    if (art) {
+      try {
+        var a = getNewsArticle({ id: art.id }), ac = JSON.parse(a.contentJson || '{}');
+        var t = [ac.title, ac.lead].concat((ac.sections || []).filter(function (x) { return x.tone === 'clear'; }).map(function (x) { return x.heading + '\n' + x.body; })).join('\n');
+        if (t.trim()) { parts.push('\n【TeMA NEWS の講座レポート(はっきり書いてよい部分)】\n' + t.slice(0, 6000)); sources.push('TeMA NEWS の講座レポート'); }
+      } catch (e) {}
+    }
+  }
+  var scan = newsScanPersonalInfo_(parts.join('\n'));
+  if (scan.blocked) throw new Error('sns_personal_info');
+  var fixedTags = String((listSnsTemplates_()[postType] || {}).hashtags || SNS_DEFAULT_HASHTAGS);
+  var userText = SNS_TYPE_PROMPTS[postType] + '\n\n# 決まったハッシュタグ(投稿の最後に必ず付けるので、hashtags には入れない)\n' + fixedTags +
+    '\n\n# 資料\n' + scan.text;
+  var r = callClaudeJson_(key, SNS_SYSTEM_PROMPT, userText, SNS_SCHEMA, 4000, 'sns');
+  var out = r.content || {};
+  // ハッシュタグ：決まったもの＋AIの提案(重なりを除き、30個まで)
+  var tags = [], seen = {};
+  (fixedTags.match(/#[^\s#]+/g) || []).concat((out.hashtags || []).map(function (t) { return '#' + String(t || '').replace(/^#+/, '').replace(/\s+/g, ''); }))
+    .forEach(function (t) { if (t.length > 1 && !seen[t] && tags.length < 30) { seen[t] = true; tags.push(t); } });
+  var caption = String(out.caption || '').trim().slice(0, 2000) + '\n\n' + tags.join(' ');
+  appendLog(user.email, 'generateSnsDraft', c.name + '：' + postType + ' ' + r.usageText);
+  return { caption: caption, design: sanitizeSnsDesign_({ cover: out.cover, points: out.points, info: out.info, pdfPage: postType === '募集告知', coverBg: postType === '募集告知' ? 'pdf' : 'plain' }), sources: sources };
 }
