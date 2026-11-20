@@ -177,6 +177,20 @@
   }
 
   .attachment-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .kind-tabs { display: flex; gap: 6px; margin: 0 0 12px; border-bottom: 1px solid var(--gw-border); }
+  .kind-tab { font-family: inherit; font-size: calc(var(--fs-scale, 1) * 13.5px); padding: 8px 16px; border: none; background: none; color: var(--gw-text-secondary); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .kind-tab.active { color: var(--gw-orange, #e8710a); border-bottom-color: var(--gw-orange, #e8710a); font-weight: 500; }
+  .kind-note { font-size: calc(var(--fs-scale, 1) * 12px); color: #8a4b00; background: #fff4e5; border: 1px solid #f5c98b; border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
+  .other-item { border: 1px solid var(--gw-border); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--gw-surface); }
+  .other-item-head { display: flex; gap: 8px; align-items: center; }
+  .other-item-head input { flex: 1; }
+  .other-item textarea { width: 100%; margin-top: 6px; }
+  .other-item-files { font-size: calc(var(--fs-scale, 1) * 12px); color: var(--gw-text-secondary); margin-top: 6px; }
+  .other-item-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .att-move { display: inline-flex; gap: 2px; flex-shrink: 0; }
+  .att-move button { font-family: inherit; font-size: 12px; padding: 2px 7px; border: 1px solid var(--gw-border); border-radius: 6px; background: var(--gw-bg); cursor: pointer; }
+  .att-move button:disabled { opacity: .35; cursor: default; }
+  .att-place { font-family: inherit; font-size: calc(var(--fs-scale, 1) * 12px); padding: 3px 6px; border: 1px solid var(--gw-border); border-radius: 6px; max-width: 220px; }
   .attachment-row {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     background: var(--gw-bg); border: 1px solid var(--gw-border); border-radius: 8px; padding: 8px 12px;
@@ -282,6 +296,11 @@
       </div>
     </div>
 
+    <div id="kindTabs" class="kind-tabs hidden" role="tablist">
+      <button type="button" class="kind-tab active" data-kind="月次">月次報告書</button>
+      <button type="button" class="kind-tab" data-kind="三役会">三役会の報告書</button>
+    </div>
+    <div id="kindNote" class="kind-note hidden">三役会の報告書です。名簿の「三役会」に印がある方だけが、見る・書くことができます（理事会の月次報告書とは別のものです）。</div>
     <div class="legend-box">
       <div class="legend-title" id="deadlineInfo">読み込み中…</div>
       <div class="legend-title monthly-pdf-info" id="monthlyPdfInfo"></div>
@@ -318,6 +337,9 @@
       <button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="r-otherContent">🖼 画像を挿入</button>
       <span class="rc-hint">カーソル位置に [image:...] と挿入されます。PDF化の際にその位置へ画像として差し込まれます。</span>
     </div>
+    <div id="otherItemsList"></div>
+    <button type="button" class="btn btn-outline btn-small" id="btnAddOtherItem" style="margin-top:8px;">＋ 報告を追加（見出し付き）</button>
+    <div class="rc-hint" style="margin-top:4px;">報告ごとに見出しを付けて足せます。報告にファイル（報告書など）を付けると、PDFではその報告のすぐ後ろにページとして入ります。</div>
 
     <div class="modal-section-title">課題・改善点等</div>
     <textarea id="r-issuesContent" rows="4" placeholder="課題や改善点等があればご記入ください"></textarea>
@@ -327,7 +349,7 @@
     <input type="file" id="inlineImageFileInput" class="hidden" accept="image/*">
 
     <div class="modal-section-title">添付ファイル</div>
-    <div class="rc-hint" style="margin-bottom:8px;">画像ファイルを添付すると、PDF化の際に報告内容の後ろに1ページとしてそのまま掲載されます。</div>
+    <div class="rc-hint" style="margin-bottom:8px;">↑↓で並び順を変えられます。「載せる場所」で、その他報告のどの報告の後ろに載せるかを選べます（「最後（添付資料）」は報告書の最後）。PDF・Word・Excel・PowerPointはページとして、画像は1ページの画像として載ります。並び順と載せる場所は「下書き保存」「提出する」で保存されます。</div>
     <div id="reportAttachmentList" class="attachment-list"></div>
     <div id="reportAttachmentEmpty" class="attachment-empty hidden">添付ファイルはありません。</div>
     <input type="file" id="reportFileInput" class="hidden">
@@ -372,6 +394,9 @@
   var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxOkLQhgds7ULE2GU3lf_oAUcQXz-ZdGeNp8E7SekFzDpN6DiReXhIczR43H-B95a-0nA/exec';
 
   var currentUser = null;
+  var currentKind = '月次';  // 月次／三役会(2026-11-20)
+  var otherItems = [];       // その他報告に足した報告 [{ id, heading, body }]
+  var pendingAttachItemId = ''; // 次に添付するファイルを付ける報告
   var currentIdToken = null;
   var departments = [];
   var reports = [];
@@ -446,8 +471,25 @@
       return new Promise(function (resolve) { setTimeout(resolve, 1200); }).then(once);
     }).then(function (res) {
       if (res && res.ok === false && res.error === 'unauthorized' && currentIdToken) handleSessionExpired();
+      if (res && res.ok && res.user && currentUser && !!res.user.sanyaku !== !!currentUser.sanyaku) {
+        currentUser.sanyaku = !!res.user.sanyaku;
+        try { saveAuthToStorage(); } catch (e) {}
+        updateKindTabs();
+      }
       return res;
     });
+  }
+
+  /* ---------- 月次／三役会の切り替え ---------- */
+  function updateKindTabs() {
+    var can = !!(currentUser && currentUser.sanyaku);
+    $('kindTabs').classList.toggle('hidden', !can);
+    if (!can && currentKind !== '月次') { currentKind = '月次'; applyKind(); loadMonthData(); }
+  }
+  function applyKind() {
+    Array.prototype.forEach.call(document.querySelectorAll('.kind-tab'), function (b) { b.classList.toggle('active', b.getAttribute('data-kind') === currentKind); });
+    $('kindNote').classList.toggle('hidden', currentKind !== '三役会');
+    $('btnCompilePdf').textContent = currentKind === '三役会' ? '三役会PDF作成' : '月次PDF作成';
   }
 
   // ログインの有効期限切れ(サーバーが unauthorized を返した)場合は、ログイン画面に戻して案内を表示する。
@@ -488,6 +530,7 @@
 
   var ERROR_MESSAGES = {
     empty_report: '本文が空です。本文を入力するか、添付ファイルを追加してから提出してください。',
+    sanyaku_access_denied: '三役会の報告書は、名簿の「三役会」に印がある方だけが使えます。',
     no_submitted_reports: 'この月度で「提出済み」の報告書がまだありません。',
     report_not_found: '報告書が見つかりませんでした。画面を再読み込みしてください。',
     department_required: '担当科が指定されていません。',
@@ -520,6 +563,8 @@
     $('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     currentMonth = defaultMonth();
     $('monthSelect').value = currentMonth;
+    updateKindTabs();
+    applyKind();
     loadMonthData(loadDepartmentsOnce()); // 担当科の一覧と月のデータを同時に取得する(高速化)
     initPullToRefresh(loadMonthData);
   }
@@ -653,11 +698,12 @@
   function loadMonthlyPdfInfo() {
     var el = $('monthlyPdfInfo'), month = currentMonth;
     el.textContent = '';
-    return callApi('getMonthlyPdfInfo', { month: month }).then(function (res) {
+    return callApi('getMonthlyPdfInfo', { month: month, kind: currentKind }).then(function (res) {
       if (month !== currentMonth || !res || !res.ok) return;
       var d = res.data || {};
-      if (String(d.url || '').indexOf('https://drive.google.com/') !== 0) { el.innerHTML = '作成済みの月次PDF：まだありません'; return; }
-      el.innerHTML = '作成済みの月次PDF：<a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">開く</a>（' + escapeHtml(d.createdAt) + ' 作成）' +
+      var pdfLabel = currentKind === '三役会' ? '作成済みの三役会PDF' : '作成済みの月次PDF';
+      if (String(d.url || '').indexOf('https://drive.google.com/') !== 0) { el.innerHTML = pdfLabel + '：まだありません'; return; }
+      el.innerHTML = pdfLabel + '：<a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">開く</a>（' + escapeHtml(d.createdAt) + ' 作成）' +
         (d.outdated ? '　<span class="outdated">※作成した後に報告書が直されています。必要なら「月次PDF作成」で作り直してください</span>' : '');
     }).catch(function () {});
   }
@@ -665,8 +711,8 @@
   function loadMonthData(waitFor) {
     loadMonthlyPdfInfo();
     return Promise.all([
-      callApi('listReports', { month: currentMonth }),
-      callApi('getReportSubmissionStatus', { month: currentMonth }),
+      callApi('listReports', { month: currentMonth, kind: currentKind }),
+      callApi('getReportSubmissionStatus', { month: currentMonth, kind: currentKind }),
       waitFor
     ]).then(function (results) {
       reports = (results[0] && results[0].ok) ? (results[0].data || []) : [];
@@ -744,13 +790,15 @@
   function openReportModal(deptName) {
     editingDepartment = deptName;
     editingReport = reportForDepartment(deptName);
-    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + deptName;
+    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + deptName + (currentKind === '三役会' ? '（三役会）' : '');
     $('reportModalMeta').textContent = editingReport
       ? ('ステータス：' + editingReport.status + '　最終更新：' + (editingReport.updatedBy || '') + '（' + (editingReport.updatedAt || '') + '）')
       : '新規作成（ログインしていれば誰でも編集できます）';
     $('r-reporterName').value = (editingReport && editingReport.reporterName) ? editingReport.reporterName : (currentUser ? currentUser.name : '');
     $('r-otherContent').value = editingReport ? (editingReport.otherContent || '') : '';
     $('r-issuesContent').value = editingReport ? (editingReport.issuesContent || '') : '';
+    otherItems = editingReport && editingReport.otherItems ? JSON.parse(JSON.stringify(editingReport.otherItems)) : [];
+    renderOtherItems();
     renderAttachmentList(editingReport ? (editingReport.attachments || []) : []);
     $('reportModal').classList.remove('hidden');
     currentDeptCourses = [];
@@ -882,7 +930,11 @@
   }
 
   function currentReportPayload(status) {
+    readOtherItems();
     return {
+      kind: currentKind,
+      otherItems: otherItems,
+      attachmentsOrder: editingReport && editingReport.attachments ? editingReport.attachments.map(function (a) { return { fileId: a.fileId, itemId: a.itemId || '' }; }) : undefined,
       department: editingDepartment,
       month: currentMonth,
       reporterName: $('r-reporterName').value || '',
@@ -893,17 +945,85 @@
     };
   }
 
+  /* --- その他報告に足す報告 --- */
+  function newItemId() { return 'it_' + Math.random().toString(36).slice(2, 10); }
+  /** 入力欄の内容を otherItems に読み込む */
+  function readOtherItems() {
+    Array.prototype.forEach.call($('otherItemsList').querySelectorAll('.other-item'), function (el) {
+      var it = otherItems.filter(function (x) { return x.id === el.getAttribute('data-id'); })[0];
+      if (!it) return;
+      it.heading = el.querySelector('.oi-heading').value;
+      it.body = el.querySelector('.oi-body').value;
+    });
+  }
+  function renderOtherItems() {
+    var list = $('otherItemsList');
+    list.innerHTML = '';
+    var atts = (editingReport && editingReport.attachments) || [];
+    otherItems.forEach(function (it, i) {
+      var el = document.createElement('div');
+      el.className = 'other-item';
+      el.setAttribute('data-id', it.id);
+      var taId = 'oi-body-' + it.id;
+      el.innerHTML =
+        '<div class="other-item-head"><input type="text" class="oi-heading" placeholder="報告の見出し（例：会員訪問の報告）">' +
+          '<span class="att-move"><button type="button" class="oi-up" title="上へ">↑</button><button type="button" class="oi-down" title="下へ">↓</button></span>' +
+          '<button type="button" class="btn btn-cancel btn-small oi-del">削除</button></div>' +
+        '<textarea class="oi-body" id="' + taId + '" rows="4" placeholder="報告の内容"></textarea>' +
+        '<div class="other-item-tools">' +
+          '<button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="' + taId + '">🖼 画像を挿入</button>' +
+          '<button type="button" class="btn btn-outline btn-small oi-attach">＋ この報告にファイルを付ける</button>' +
+        '</div>' +
+        '<div class="other-item-files"></div>';
+      el.querySelector('.oi-heading').value = it.heading || '';
+      el.querySelector('.oi-body').value = it.body || '';
+      var mine = atts.filter(function (a) { return a.itemId === it.id; });
+      el.querySelector('.other-item-files').textContent = mine.length ? '付いているファイル：' + mine.map(function (a) { return a.fileName; }).join('、') : '';
+      el.querySelector('.oi-up').disabled = i === 0;
+      el.querySelector('.oi-down').disabled = i === otherItems.length - 1;
+      el.querySelector('.oi-up').addEventListener('click', function () { readOtherItems(); moveInArray(otherItems, i, -1); renderOtherItems(); renderAttachmentList(atts); });
+      el.querySelector('.oi-down').addEventListener('click', function () { readOtherItems(); moveInArray(otherItems, i, 1); renderOtherItems(); renderAttachmentList(atts); });
+      el.querySelector('.oi-del').addEventListener('click', function () {
+        if ((it.heading || it.body || mine.length) && !confirm('この報告を削除しますか？' + (mine.length ? '\n（付いているファイルは、最後の「添付資料」に移ります）' : ''))) return;
+        readOtherItems();
+        otherItems = otherItems.filter(function (x) { return x.id !== it.id; });
+        atts.forEach(function (a) { if (a.itemId === it.id) a.itemId = ''; });
+        renderOtherItems(); renderAttachmentList(atts);
+      });
+      el.querySelector('.oi-attach').addEventListener('click', function () { readOtherItems(); pendingAttachItemId = it.id; $('reportFileInput').click(); });
+      bindInsertImageButton(el.querySelector('.btn-insert-image'));
+      list.appendChild(el);
+    });
+  }
+  function moveInArray(arr, i, d) {
+    var j = i + d;
+    if (j < 0 || j >= arr.length) return;
+    var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+
+  /* --- 添付ファイル(並べ替え・載せる場所) --- */
   function renderAttachmentList(attachments) {
     var listEl = $('reportAttachmentList');
     listEl.innerHTML = '';
     $('reportAttachmentEmpty').classList.toggle('hidden', !!(attachments && attachments.length));
-    (attachments || []).forEach(function (a) {
+    readOtherItems();
+    (attachments || []).forEach(function (a, i) {
       var row = document.createElement('div');
       row.className = 'attachment-row';
+      var opts = '<option value="">最後（添付資料）</option>' + otherItems.map(function (it, k) {
+        return '<option value="' + escapeHtml(it.id) + '"' + (a.itemId === it.id ? ' selected' : '') + '>報告' + (k + 1) + '：' + escapeHtml((it.heading || '(見出しなし)').slice(0, 20)) + ' の後ろ</option>';
+      }).join('');
       row.innerHTML =
-        '<a href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + escapeHtml(a.fileName) + '</a>' +
-        '<button type="button" class="btn btn-cancel btn-small">削除</button>';
-      row.querySelector('button').addEventListener('click', function () { deleteAttachment(a.fileId); });
+        '<span class="att-move"><button type="button" class="a-up" title="上へ">↑</button><button type="button" class="a-down" title="下へ">↓</button></span>' +
+        '<a href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener" style="flex:1;">' + escapeHtml(a.fileName) + '</a>' +
+        '<select class="att-place" title="載せる場所">' + opts + '</select>' +
+        '<button type="button" class="btn btn-cancel btn-small a-del">削除</button>';
+      row.querySelector('.a-up').disabled = i === 0;
+      row.querySelector('.a-down').disabled = i === attachments.length - 1;
+      row.querySelector('.a-up').addEventListener('click', function () { moveInArray(attachments, i, -1); renderAttachmentList(attachments); });
+      row.querySelector('.a-down').addEventListener('click', function () { moveInArray(attachments, i, 1); renderAttachmentList(attachments); });
+      row.querySelector('.att-place').addEventListener('change', function (e) { a.itemId = e.target.value; renderOtherItems(); });
+      row.querySelector('.a-del').addEventListener('click', function () { deleteAttachment(a.fileId); });
       listEl.appendChild(row);
     });
   }
@@ -925,16 +1045,17 @@
   /* ---------- 本文中への画像挿入 ---------- */
   var inlineImageTarget = null; // { textareaId, cursorPos }
 
-  function initInlineImageButtons() {
-    Array.prototype.forEach.call(document.querySelectorAll('.btn-insert-image'), function (btn) {
-      btn.addEventListener('click', function () {
-        var textareaId = btn.getAttribute('data-target');
-        var ta = $(textareaId);
-        // ファイル選択ダイアログでフォーカスが移る前に、挿入位置(カーソル位置)を覚えておく
-        inlineImageTarget = { textareaId: textareaId, cursorPos: (ta.selectionStart != null) ? ta.selectionStart : ta.value.length };
-        $('inlineImageFileInput').click();
-      });
+  function bindInsertImageButton(btn) {
+    btn.addEventListener('click', function () {
+      var textareaId = btn.getAttribute('data-target');
+      var ta = $(textareaId);
+      // ファイル選択ダイアログでフォーカスが移る前に、挿入位置(カーソル位置)を覚えておく
+      inlineImageTarget = { textareaId: textareaId, cursorPos: (ta.selectionStart != null) ? ta.selectionStart : ta.value.length };
+      $('inlineImageFileInput').click();
     });
+  }
+  function initInlineImageButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll('.btn-insert-image'), bindInsertImageButton);
     $('inlineImageFileInput').addEventListener('change', uploadInlineImage);
   }
 
@@ -957,7 +1078,7 @@
     var reader = new FileReader();
     reader.onload = function () {
       var base64 = String(reader.result).split(',')[1] || '';
-      callApi('uploadReportInlineImage', { fileName: file.name, mimeType: file.type || 'image/png', base64Data: base64 })
+      callApi('uploadReportInlineImage', { kind: currentKind, fileName: file.name, mimeType: file.type || 'image/png', base64Data: base64 })
         .then(function (res) {
           if (!res.ok) { showToast(errorMessage(res.error)); return; }
           insertInlineImagePlaceholder_(res.data.fileId);
@@ -971,18 +1092,24 @@
   function uploadSelectedAttachment(e) {
     var file = e.target.files && e.target.files[0];
     e.target.value = '';
+    var itemId = pendingAttachItemId;
+    pendingAttachItemId = '';
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function () {
       var base64 = String(reader.result).split(',')[1] || '';
       ensureReportId().then(function (reportId) {
         return callApi('uploadReportAttachment', {
-          reportId: reportId, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data: base64
+          reportId: reportId, itemId: itemId, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data: base64
         });
       }).then(function (res) {
         if (!res.ok) { showToast(errorMessage(res.error)); return; }
-        editingReport.attachments = res.data.attachments;
+        // 画面で並べ替え中の順番・載せる場所を残したまま、新しいファイルを最後に足す
+        var known = {}; (editingReport.attachments || []).forEach(function (a) { known[a.fileId] = true; });
+        var added = (res.data.attachments || []).filter(function (a) { return !known[a.fileId]; });
+        editingReport.attachments = (editingReport.attachments || []).concat(added);
         renderAttachmentList(editingReport.attachments);
+        renderOtherItems();
         showToast('ファイルを添付しました');
       }).catch(function () {});
     };
@@ -994,8 +1121,9 @@
     if (!confirm('この添付ファイルを削除しますか？')) return;
     callApi('deleteReportAttachment', { reportId: editingReport.id, fileId: fileId }).then(function (res) {
       if (!res.ok) { showToast(errorMessage(res.error)); return; }
-      editingReport.attachments = res.data.attachments;
+      editingReport.attachments = (editingReport.attachments || []).filter(function (a) { return a.fileId !== fileId; });
       renderAttachmentList(editingReport.attachments);
+      renderOtherItems();
       showToast('削除しました');
     }).catch(function () {});
   }
@@ -1078,7 +1206,7 @@
         (data.parts || []).forEach(function (partId, k) {
           chain = chain.then(function () {
             setStatus('月次PDFを読み込んでいます…（' + (k + 1) + ' / ' + data.parts.length + '）');
-            return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: partId, base: true });
+            return callApi('getMonthlyPdfPart', { month: currentMonth, kind: currentKind, fileId: partId, base: true });
           }).then(function (res) {
             if (!res.ok) throw new Error(res.error);
             return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64));
@@ -1089,7 +1217,7 @@
             chain = chain.then(function () {
             done++;
             setStatus('添付資料をページとして差し込んでいます…（' + done + ' / ' + data.appendix.length + '）');
-            return callApi('getMonthlyPdfPart', { month: currentMonth, fileId: x.fileId }).then(function (res) {
+            return callApi('getMonthlyPdfPart', { month: currentMonth, kind: currentKind, fileId: x.fileId }).then(function (res) {
               if (!res.ok) throw new Error(res.error);
               return PDFLib.PDFDocument.load(base64ToBytes(res.data.base64), { ignoreEncryption: true });
             }).then(function (src) {
@@ -1116,7 +1244,7 @@
         });
       }).then(function (bytes) {
         var blob = new Blob([bytes], { type: 'application/pdf' });
-        return uploadInChunks(blob, 'beginMonthlyPdfUpload', { month: currentMonth, baseFileId: data.fileId, partFileIds: data.parts || [], size: blob.size },
+        return uploadInChunks(blob, 'beginMonthlyPdfUpload', { month: currentMonth, kind: currentKind, baseFileId: data.fileId, partFileIds: data.parts || [], size: blob.size },
           'finishMonthlyPdfUpload', {}, function (p) { setStatus('結合したPDFを保存しています…（' + Math.round(p * 100) + '%）'); });
       }).then(function (res) {
         if (!res.ok) throw new Error(res.error);
@@ -1137,7 +1265,7 @@
     }
     btn.disabled = true;
     setStatus('月次PDFを作成しています…');
-    callApi('compileMonthlyReportsPdf', { month: currentMonth }).then(function (res) {
+    callApi('compileMonthlyReportsPdf', { month: currentMonth, kind: currentKind }).then(function (res) {
       if (!res.ok) { showToast(errorMessage(res.error)); if (win) win.close(); return; }
       var data = res.data;
       if (!data.appendix || !data.appendix.length) {
@@ -1301,7 +1429,26 @@
     $('btnReportSubmit').addEventListener('click', function () { saveReportWithStatus('提出済み'); });
     $('reportModal').addEventListener('click', function (e) { if (e.target.id === 'reportModal') closeReportModal(); });
     $('btnReportCourseAdd').addEventListener('click', function () { addCourseRow(); });
-    $('btnReportAttach').addEventListener('click', function () { $('reportFileInput').click(); });
+    $('btnReportAttach').addEventListener('click', function () { pendingAttachItemId = ''; $('reportFileInput').click(); });
+    $('btnAddOtherItem').addEventListener('click', function () {
+      readOtherItems();
+      otherItems.push({ id: newItemId(), heading: '', body: '' });
+      renderOtherItems();
+      renderAttachmentList((editingReport && editingReport.attachments) || []);
+      var last = $('otherItemsList').lastElementChild;
+      if (last) last.querySelector('.oi-heading').focus();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.kind-tab'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-kind');
+        if (k === currentKind) return;
+        currentKind = k;
+        applyKind();
+        $('reportGrid').innerHTML = '';
+        $('deadlineInfo').textContent = '読み込み中…';
+        loadMonthData();
+      });
+    });
     $('reportFileInput').addEventListener('change', uploadSelectedAttachment);
     initInlineImageButtons();
   });

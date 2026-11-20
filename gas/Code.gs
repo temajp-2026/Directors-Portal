@@ -131,6 +131,15 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 月次報告書：報告の追加・添付の並べ替え・三役会の報告書】
+ *   - 名簿(AllowedAccounts)の F列「三役会」に印(○など)がある人だけが、三役会の報告書を見る・書くことができる。
+ *     F列の見出しは initializeSpreadsheet を実行すると入る(手で「三役会」と書いてもよい)。名簿を変えたら clearAccountCache を実行するとすぐ反映。
+ *   - Reports シートに列「kind」(月次／三役会。空欄は月次)と「otherItemsJson」(その他報告に足した報告)を足す
+ *     (シートを使うときに自動で足されます)。
+ *   - 三役会の報告書の添付・PDFは、Google ドライブの「理事ポータル_三役会報告書」フォルダに保存し、
+ *     三役会の人だけに共有する(syncDriveSharing でそろえる)。
+ *   - 添付ファイルは並べ替えができ、載せる場所(その他報告のどの報告の後ろか／最後の「添付資料」か)を選べる。
+ *     PDF・Office の添付は、載せる場所のすぐ後ろにページとして差し込む。
  * ・【2026-11-20 SNS：AIで投稿文と画像の文言を作る】SnsPosts シートに列「designJson」を足します
  *   (シートを使うときに自動で足されます。initializeSpreadsheet の再実行は不要)。
  *   - 「募集告知」「開催報告」で、講座案内PDFの読み取り結果(と、開催報告では参加人数・TeMA NEWS の記事)を
@@ -224,7 +233,9 @@ var COMMENT_HEADERS = ['id', 'courseId', 'authorName', 'authorEmail', 'body', 'c
 // coursesJsonは [{ title, eventDate, venueCount, zoomCount }, ...] のJSON文字列。
 var REPORT_HEADERS = [
   'id', 'department', 'month', 'reporterName', 'coursesJson', 'otherContent', 'issuesContent',
-  'attachmentsJson', 'status', 'updatedBy', 'updatedAt', 'submittedAt'
+  'attachmentsJson', 'status', 'updatedBy', 'updatedAt', 'submittedAt',
+  'kind',           // 月次／三役会(空欄は月次。2026-11-20)
+  'otherItemsJson'  // その他報告に足した報告 [{ id, heading, body }](2026-11-20)
 ];
 
 // 役員会の開催日程(月次報告書の「未提出」アラート・提出期限の基準に使用)。
@@ -317,12 +328,16 @@ function initializeSpreadsheet() {
 
   var allowed = ss.getSheetByName(SHEET_ALLOWED) || ss.insertSheet(SHEET_ALLOWED);
   if (allowed.getLastRow() === 0) {
-    allowed.appendRow(safeRow_(['メールアドレス', '氏名', '役割', '登録日', '請求書アクセス']));
-    allowed.appendRow(safeRow_(['example@gmail.com', '(サンプル・削除してください)', '理事', new Date(), '']));
+    allowed.appendRow(safeRow_(['メールアドレス', '氏名', '役割', '登録日', '請求書アクセス', '三役会']));
+    allowed.appendRow(safeRow_(['example@gmail.com', '(サンプル・削除してください)', '理事', new Date(), '', '']));
   } else {
-    var headerRow = allowed.getRange(1, 1, 1, 5).getValues()[0];
+    ensureColumnCapacity(allowed, 6);
+    var headerRow = allowed.getRange(1, 1, 1, 6).getValues()[0];
     if (headerRow[4] !== '請求書アクセス') {
       allowed.getRange(1, 5).setValue(safeCell_('請求書アクセス'));
+    }
+    if (headerRow[5] !== '三役会') {
+      allowed.getRange(1, 6).setValue(safeCell_('三役会'));
     }
   }
 
@@ -686,7 +701,8 @@ function handleRequest(e) {
       // 表示名が空になったりメールアドレスになったりしてしまう。AllowedAccountsシートに
       // 登録された氏名があれば、そちらを優先して使う(理事が自分で確実に登録した名前のため)。
       if (account.name) user.name = account.name;
-      ensureDriveAccessForUser_(user.email); // 保存フォルダを閲覧できるようにする(6時間に1回だけ確認)
+      user.sanyaku = !!account.sanyaku; // 三役会の報告書を使えるか(画面にも返す)
+      ensureDriveAccessForUser_(user.email, user.sanyaku); // 保存フォルダを閲覧できるようにする(6時間に1回だけ確認)
     }
 
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
@@ -798,7 +814,7 @@ function handleRequest(e) {
         result = submitInvoiceLecturer(body.payload);
         break;
       case 'listReports':
-        result = listReports(body.payload);
+        result = listReports(body.payload, user);
         break;
       case 'saveReport':
         result = saveReport(body.payload, user);
@@ -816,7 +832,7 @@ function handleRequest(e) {
         result = compileMonthlyReportsPdf(body.payload, user);
         break;
       case 'getReportSubmissionStatus':
-        result = getReportSubmissionStatus(body.payload);
+        result = getReportSubmissionStatus(body.payload, user);
         break;
       case 'listBoardMeetings':
         result = listBoardMeetings();
@@ -912,10 +928,10 @@ function handleRequest(e) {
         result = beginLecturerMaterialUpload(body.payload, user);
         break;
       case 'getMonthlyPdfInfo':
-        result = getMonthlyPdfInfo(body.payload);
+        result = getMonthlyPdfInfo(body.payload, user);
         break;
       case 'getMonthlyPdfPart':
-        result = getMonthlyPdfPart(body.payload);
+        result = getMonthlyPdfPart(body.payload, user);
         break;
       case 'beginMonthlyPdfUpload':
         result = beginMonthlyPdfUpload(body.payload, user);
@@ -1029,11 +1045,12 @@ function getAccountInfo_(email) {
     var hit = cache.get(key);
     if (hit) { try { return JSON.parse(hit); } catch (e2) {} }
   }
-  var info = { allowed: false, name: '', invoice: false };
+  var info = { allowed: false, name: '', invoice: false, sanyaku: false };
   var values = getSheet(SHEET_ALLOWED).getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][0]).trim().toLowerCase() === em) {
-      info = { allowed: true, name: String(values[i][1] || '').trim(), invoice: String(values[i][4] || '').trim() !== '' };
+      info = { allowed: true, name: String(values[i][1] || '').trim(), invoice: String(values[i][4] || '').trim() !== '',
+        sanyaku: String(values[i][5] == null ? '' : values[i][5]).trim() !== '' }; // F列「三役会」
       break;
     }
   }
@@ -1406,6 +1423,35 @@ function portalFolders_() {
   return [getOrCreateCoursePdfFolder(), getOrCreateReportFolder_(), getOrCreateMaterialsFolder_()];
 }
 
+/** 名簿で「三役会」(F列)に印がある人のメールアドレス(小文字) */
+function sanyakuEmails_() {
+  var values = getSheet(SHEET_ALLOWED).getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var em = String(values[i][0] || '').trim().toLowerCase();
+    if (em && em.indexOf('@') > 0 && String(values[i][5] == null ? '' : values[i][5]).trim() !== '' && out.indexOf(em) === -1) out.push(em);
+  }
+  return out;
+}
+
+/** 三役会の報告書の添付・PDFを保存するフォルダ(三役会の人だけに共有する) */
+function getOrCreateSanyakuFolder_() {
+  var name = '理事ポータル_三役会報告書';
+  var folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
+}
+
+/** 報告書の種類(月次／三役会) */
+function reportKind_(k) { return k === '三役会' ? '三役会' : '月次'; }
+/** 三役会の報告書は、三役会に印がある人だけ */
+function assertReportKind_(kind, user) {
+  if (kind === '三役会' && !(user && user.sanyaku)) throw new Error('sanyaku_access_denied');
+}
+function reportFolderFor_(kind) { return kind === '三役会' ? getOrCreateSanyakuFolder_() : getOrCreateReportFolder_(); }
+/** 月次PDFのファイル名(拡張子なし) */
+function monthlyPdfBase_(month, kind) { return month + (kind === '三役会' ? '月度三役会報告書' : '月度報告書'); }
+
 /** 名簿シートに登録されたメールアドレス(小文字)の一覧。サンプル行は除く */
 function rosterEmails_() {
   var values = getSheet(SHEET_ALLOWED).getDataRange().getValues();
@@ -1437,7 +1483,7 @@ function addFolderViewer_(folder, email) {
 }
 
 /** ログインした理事が、保存フォルダを閲覧できるようにする(6時間に1回だけ確認。失敗しても本来の処理は続ける) */
-function ensureDriveAccessForUser_(email) {
+function ensureDriveAccessForUser_(email, sanyaku) {
   var em = String(email || '').trim().toLowerCase();
   if (!em) return;
   var cache = null, key = '';
@@ -1451,6 +1497,10 @@ function ensureDriveAccessForUser_(email) {
     portalFolders_().forEach(function (folder) {
       if (folderUserEmails_(folder).indexOf(em) === -1) addFolderViewer_(folder, em);
     });
+    if (sanyaku) {
+      var sf = getOrCreateSanyakuFolder_();
+      if (folderUserEmails_(sf).indexOf(em) === -1) addFolderViewer_(sf, em);
+    }
   } catch (e2) {
     try { cache.remove(key); } catch (e3) {}
   }
@@ -1480,6 +1530,18 @@ function syncDriveSharing() {
       try { if (f.getSharingAccess() !== DriveApp.Access.PRIVATE) { f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); privatized++; } } catch (e) {}
     }
   });
+  // 三役会のフォルダは、三役会に印がある人だけに共有する
+  try {
+    var sanyaku = sanyakuEmails_(), sf = getOrCreateSanyakuFolder_();
+    try { if (sf.getSharingAccess() !== DriveApp.Access.PRIVATE) { sf.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); privatized++; } } catch (e) {}
+    var sPresent = folderUserEmails_(sf);
+    sanyaku.forEach(function (em) { if (sPresent.indexOf(em) === -1) { try { addFolderViewer_(sf, em); added++; } catch (e) {} } });
+    sf.getViewers().map(function (u) { return String(u.getEmail() || '').toLowerCase(); }).forEach(function (em) {
+      if (em && sanyaku.indexOf(em) === -1) { try { sf.removeViewer(em); removed++; } catch (e) {} }
+    });
+    var sFiles = sf.getFiles();
+    while (sFiles.hasNext()) { var f2 = sFiles.next(); try { if (f2.getSharingAccess() !== DriveApp.Access.PRIVATE) { f2.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); privatized++; } } catch (e) {} }
+  } catch (e4) { Logger.log('三役会のフォルダの共有をそろえられませんでした: ' + e4); }
   try { var c = CacheService.getScriptCache(); c.put('acct_ver', Utilities.getUuid(), SESSION_CACHE_SECONDS); } catch (e) {}
   var msg = 'ドライブの共有を名簿に合わせました：追加 ' + added + '件／解除 ' + removed + '件／リンク共有を解除したファイル・フォルダ ' + privatized + '件';
   Logger.log(msg);
@@ -3307,16 +3369,53 @@ function reportRowToObject(values) {
   obj.reporterName = obj.reporterName || '';
   obj.updatedAt = formatDateTime(obj.updatedAt);
   obj.submittedAt = formatDateTime(obj.submittedAt);
+  obj.kind = reportKind_(obj.kind);
+  obj.otherItems = safeParseJsonArray_(obj.otherItemsJson);
+  delete obj.otherItemsJson;
   return obj;
 }
 
-function findReportRowIndex_(sheet, department, month) {
+function findReportRowIndex_(sheet, department, month, kind) {
   var values = sheet.getDataRange().getValues();
-  var depCol = reportCol('department') - 1, monthCol = reportCol('month') - 1;
+  var depCol = reportCol('department') - 1, monthCol = reportCol('month') - 1, kindCol = reportCol('kind') - 1;
+  kind = reportKind_(kind);
   for (var i = 1; i < values.length; i++) {
-    if (values[i][depCol] === department && formatMonthValue_(values[i][monthCol]) === String(month)) return i + 1;
+    if (values[i][depCol] === department && formatMonthValue_(values[i][monthCol]) === String(month) && reportKind_(values[i][kindCol]) === kind) return i + 1;
   }
   return -1;
+}
+
+/** 報告書の行の種類を確かめる(三役会の報告書は、三役会の人だけ) */
+function assertReportRowAccess_(sheet, rowIndex, user) {
+  var kind = reportKind_(sheet.getRange(rowIndex, reportCol('kind')).getValue());
+  assertReportKind_(kind, user);
+  return kind;
+}
+
+/** その他報告に足した報告を確かめる [{ id, heading, body }] */
+function sanitizeReportItems_(items) {
+  return (Array.isArray(items) ? items : []).slice(0, 20).map(function (it) {
+    it = it || {};
+    var id = String(it.id || '').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 40) || ('it_' + Utilities.getUuid().slice(0, 8));
+    return { id: id, heading: stripHtmlTags_(String(it.heading || '')).trim().slice(0, 200), body: stripHtmlTags_(String(it.body || '')).trim().slice(0, 20000) };
+  }).filter(function (it) { return it.heading || it.body; });
+}
+
+/** 添付ファイルの並び順と載せる場所(itemId)を、画面から届いた順にそろえる(知らないファイルは無視) */
+function reorderReportAttachments_(attachments, order, items) {
+  if (!Array.isArray(order)) return attachments;
+  var itemIds = {}; (items || []).forEach(function (it) { itemIds[it.id] = true; });
+  var byId = {}; attachments.forEach(function (a) { byId[a.fileId] = a; });
+  var out = [], used = {};
+  order.forEach(function (o) {
+    var a = o && byId[o.fileId];
+    if (!a || used[a.fileId]) return;
+    used[a.fileId] = true;
+    a.itemId = o.itemId && itemIds[o.itemId] ? String(o.itemId) : '';
+    out.push(a);
+  });
+  attachments.forEach(function (a) { if (!used[a.fileId]) { if (a.itemId && !itemIds[a.itemId]) a.itemId = ''; out.push(a); } });
+  return out;
 }
 
 function findReportRowIndexById_(sheet, id) {
@@ -3328,14 +3427,20 @@ function findReportRowIndexById_(sheet, id) {
   return -1;
 }
 
-/** 報告書一覧を取得する。payload.month(YYYY-MM)を指定すればその月度のみ、省略すれば全件。 */
-function listReports(payload) {
+/**
+ * 報告書一覧を取得する。payload.month(YYYY-MM)を指定すればその月度のみ、省略すれば全件。
+ * payload.kind：'三役会' で三役会の報告書(三役会の人だけ)。省略すると月次の報告書だけ(ダッシュボード・SNS などもこちら)。
+ */
+function listReports(payload, user) {
+  var kind = reportKind_(payload && payload.kind);
+  assertReportKind_(kind, user);
   var sheet = getSheetForRead_(SHEET_REPORTS, REPORT_HEADERS, getReportSheet);
   var values = sheet.getDataRange().getValues();
   var rows = [];
   for (var i = 1; i < values.length; i++) {
     if (!values[i][0]) continue;
     var obj = reportRowToObject(values[i]);
+    if (obj.kind !== kind) continue;
     if (payload && payload.month && obj.month !== payload.month) continue;
     rows.push(obj);
   }
@@ -3356,9 +3461,12 @@ function listReports(payload) {
 function saveReport(payload, user) {
   if (!payload || !payload.department) throw new Error('department_required');
   if (!payload.month) throw new Error('month_required');
+  var kind = reportKind_(payload.kind);
+  assertReportKind_(kind, user);
   var sheet = getReportSheet();
-  var rowIndex = findReportRowIndex_(sheet, payload.department, payload.month);
+  var rowIndex = findReportRowIndex_(sheet, payload.department, payload.month, kind);
   var now = new Date();
+  var otherItems = sanitizeReportItems_(payload.otherItems);
 
   var reporterName = stripHtmlTags_(String(payload.reporterName || user.name || user.email)).trim();
   var courses = sanitizeReportCourses_(payload.courses);
@@ -3367,17 +3475,17 @@ function saveReport(payload, user) {
   var requestedStatus = payload.status === '提出済み' ? '提出済み' : (payload.status === '下書き' ? '下書き' : null);
 
   function isContentEmpty(existingAttachmentsCount) {
-    return !courses.length && !otherContent && !issuesContent && !existingAttachmentsCount;
+    return !courses.length && !otherContent && !issuesContent && !otherItems.length && !existingAttachmentsCount;
   }
 
   if (rowIndex === -1) {
     var finalStatusNew = requestedStatus || '下書き';
     if (finalStatusNew === '提出済み' && isContentEmpty(0)) throw new Error('empty_report');
     var id = Utilities.getUuid();
-    sheet.appendRow(safeRow_([
-      id, payload.department, payload.month, reporterName, JSON.stringify(courses), otherContent, issuesContent,
-      '[]', finalStatusNew, user.name || user.email, now, finalStatusNew === '提出済み' ? now : ''
-    ]));
+    var rowObj = { id: id, department: payload.department, month: payload.month, reporterName: reporterName, coursesJson: JSON.stringify(courses),
+      otherContent: otherContent, issuesContent: issuesContent, attachmentsJson: '[]', status: finalStatusNew, updatedBy: user.name || user.email,
+      updatedAt: now, submittedAt: finalStatusNew === '提出済み' ? now : '', kind: kind === '三役会' ? '三役会' : '', otherItemsJson: JSON.stringify(otherItems) };
+    sheet.appendRow(safeRow_(REPORT_HEADERS.map(function (h) { return rowObj[h]; })));
     appendLog(user.email, 'saveReport', payload.department + ' ' + payload.month);
     return { id: id, status: finalStatusNew };
   }
@@ -3392,6 +3500,12 @@ function saveReport(payload, user) {
   sheet.getRange(rowIndex, reportCol('coursesJson')).setValue(safeCell_(JSON.stringify(courses)));
   sheet.getRange(rowIndex, reportCol('otherContent')).setValue(safeCell_(otherContent));
   sheet.getRange(rowIndex, reportCol('issuesContent')).setValue(safeCell_(issuesContent));
+  sheet.getRange(rowIndex, reportCol('otherItemsJson')).setValue(safeCell_(JSON.stringify(otherItems)));
+  if (Array.isArray(payload.attachmentsOrder)) {
+    // 添付ファイルの並び順・載せる場所
+    var atts = reorderReportAttachments_(safeParseJsonArray_(existing[reportCol('attachmentsJson') - 1]), payload.attachmentsOrder, otherItems);
+    sheet.getRange(rowIndex, reportCol('attachmentsJson')).setValue(safeCell_(JSON.stringify(atts)));
+  }
   sheet.getRange(rowIndex, reportCol('status')).setValue(safeCell_(finalStatus));
   sheet.getRange(rowIndex, reportCol('updatedBy')).setValue(safeCell_(user.name || user.email));
   sheet.getRange(rowIndex, reportCol('updatedAt')).setValue(safeCell_(now));
@@ -3419,17 +3533,19 @@ function uploadReportAttachment(payload, user) {
   var sheet = getReportSheet();
   var rowIndex = findReportRowIndexById_(sheet, payload.reportId);
   if (rowIndex === -1) throw new Error('report_not_found');
+  var kind = assertReportRowAccess_(sheet, rowIndex, user);
 
   var bytes = Utilities.base64Decode(payload.base64Data);
   var blob = Utilities.newBlob(bytes, payload.mimeType || 'application/octet-stream', payload.fileName || '添付ファイル');
-  var folder = getOrCreateReportFolder_();
+  var folder = reportFolderFor_(kind);
   var file = folder.createFile(blob);
 
   var attachments = safeParseJsonArray_(sheet.getRange(rowIndex, reportCol('attachmentsJson')).getValue());
   attachments.push({
     fileId: file.getId(),
     fileName: payload.fileName || file.getName(),
-    url: 'https://drive.google.com/file/d/' + file.getId() + '/view'
+    url: 'https://drive.google.com/file/d/' + file.getId() + '/view',
+    itemId: String(payload.itemId || '').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 40) // その他報告のどの報告に付けるか(空欄は最後の「添付資料」)
   });
   sheet.getRange(rowIndex, reportCol('attachmentsJson')).setValue(safeCell_(JSON.stringify(attachments)));
   sheet.getRange(rowIndex, reportCol('updatedBy')).setValue(safeCell_(user.name || user.email));
@@ -3448,7 +3564,9 @@ function uploadReportInlineImage(payload, user) {
   if (!payload || !payload.base64Data) throw new Error('no_file');
   var bytes = Utilities.base64Decode(payload.base64Data);
   var blob = Utilities.newBlob(bytes, payload.mimeType || 'image/png', payload.fileName || '画像.png');
-  var folder = getOrCreateReportFolder_();
+  var kind = reportKind_(payload.kind);
+  assertReportKind_(kind, user);
+  var folder = reportFolderFor_(kind);
   var file = folder.createFile(blob);
   appendLog(user.email, 'uploadReportInlineImage', payload.fileName || '');
   return { fileId: file.getId(), fileName: file.getName(), url: 'https://drive.google.com/file/d/' + file.getId() + '/view' };
@@ -3460,6 +3578,7 @@ function deleteReportAttachment(payload, user) {
   var sheet = getReportSheet();
   var rowIndex = findReportRowIndexById_(sheet, payload.reportId);
   if (rowIndex === -1) throw new Error('report_not_found');
+  assertReportRowAccess_(sheet, rowIndex, user);
 
   var attachments = safeParseJsonArray_(sheet.getRange(rowIndex, reportCol('attachmentsJson')).getValue());
   var remaining = attachments.filter(function (a) { return a.fileId !== payload.fileId; });
@@ -3494,12 +3613,14 @@ function isImageFileName_(name) {
 /** DriveのファイルIDから、PDF化(HTML→Googleドキュメント変換)の中に埋め込める
  * base64データURI形式の<img>タグを組み立てる(Drive上のURLをそのまま<img src>に
  * 指定すると変換時にアクセスできず失敗することがあるため、base64で直接埋め込む)。 */
+// PDFに埋め込める画像のフォルダ(作っている報告書の種類。三役会のPDFでは三役会のフォルダの画像だけ)
+var REPORT_IMAGE_KIND_ = '月次';
 function imageTagForFileId_(fileId, styleAttr) {
   try {
     var file = DriveApp.getFileById(fileId);
     // 【セキュリティ】報告書の添付フォルダにある画像だけを埋め込む。以前は本文に任意のファイルIDを書くと、
     // スクリプト所有者のドライブにある無関係なファイルまでPDFに埋め込めてしまった。
-    if (!isInFolder_(file, getOrCreateReportFolder_()) || !/^image\//.test(file.getMimeType())) {
+    if (!isInFolder_(file, reportFolderFor_(REPORT_IMAGE_KIND_)) || !/^image\//.test(file.getMimeType())) {
       return '<span style="color:#c5221f;">［画像を読み込めませんでした］</span>';
     }
     var blob = file.getBlob();
@@ -3553,14 +3674,15 @@ var MONTHLY_PART_MAX_BYTES = 30 * 1024 * 1024;
 function monthlyFileExt_(name) { return String((String(name || '').match(/\.([A-Za-z0-9]+)$/) || [])[1] || '').toLowerCase(); }
 
 /** その月度の月次PDF(作ったばかりの、添付を差し込む前のもの)か確かめる */
-function checkMonthlyBasePdf_(month, fileId) {
+function checkMonthlyBasePdf_(month, fileId, kind) {
   if (!/^\d{4}-\d{2}$/.test(String(month || ''))) throw new Error('month_required');
   var file;
   try { file = DriveApp.getFileById(String(fileId || '')); } catch (e) { throw new Error('file_not_found'); }
-  var folderId = getOrCreateReportFolder_().getId(), parents = file.getParents(), ok = false;
+  var folderId = reportFolderFor_(kind).getId(), parents = file.getParents(), ok = false;
   while (parents.hasNext()) { if (parents.next().getId() === folderId) { ok = true; break; } }
-  var name = file.getName();
-  if (!ok || file.isTrashed() || (name !== month + '月度報告書.pdf' && !/^\d{4}-\d{2}月度報告書_部分\d+\.pdf$/.test(name)) || name.indexOf(month) !== 0) throw new Error('file_not_found');
+  var name = file.getName(), base = monthlyPdfBase_(month, kind);
+  var isPart = name.indexOf(base + '_部分') === 0 && /_部分\d+\.pdf$/.test(name);
+  if (!ok || file.isTrashed() || (name !== base + '.pdf' && !isPart)) throw new Error('file_not_found');
   return file;
 }
 
@@ -3569,16 +3691,18 @@ function checkMonthlyBasePdf_(month, fileId) {
  * base が true：作ったばかりの月次PDF。それ以外：その月度の提出済み報告書の添付資料を PDF にしたもの。
  * 戻り値：{ base64 }
  */
-function getMonthlyPdfPart(payload) {
+function getMonthlyPdfPart(payload, user) {
   if (!payload) throw new Error('file_not_found');
+  var kind = reportKind_(payload.kind);
+  assertReportKind_(kind, user);
   if (payload.base) {
-    var bytes0 = checkMonthlyBasePdf_(payload.month, payload.fileId).getBlob().getBytes();
+    var bytes0 = checkMonthlyBasePdf_(payload.month, payload.fileId, kind).getBlob().getBytes();
     if (bytes0.length > MONTHLY_PART_MAX_BYTES) throw new Error('file_too_large');
     return { base64: Utilities.base64Encode(bytes0) };
   }
   var month = String(payload.month || ''), fileId = String(payload.fileId || '');
   var att = null;
-  listReports({ month: month }).forEach(function (r) {
+  listReports({ month: month, kind: kind }, user).forEach(function (r) {
     if (r.status !== '提出済み') return;
     (r.attachments || []).forEach(function (a) { if (a && a.fileId === fileId) att = a; });
   });
@@ -3604,13 +3728,15 @@ function getMonthlyPdfPart(payload) {
 
 /** 添付資料を差し込んだ月次PDFの保存を始める(分割アップロード)。payload: { month, baseFileId, partFileIds, size } */
 function beginMonthlyPdfUpload(payload, user) {
-  var base = checkMonthlyBasePdf_(payload && payload.month, payload && payload.baseFileId);
+  var kind = reportKind_(payload && payload.kind);
+  assertReportKind_(kind, user);
+  var base = checkMonthlyBasePdf_(payload && payload.month, payload && payload.baseFileId, kind);
   var ids = [base.getId()];
-  (Array.isArray(payload.partFileIds) ? payload.partFileIds : []).slice(0, 50).forEach(function (id) { ids.push(checkMonthlyBasePdf_(payload.month, id).getId()); });
+  (Array.isArray(payload.partFileIds) ? payload.partFileIds : []).slice(0, 50).forEach(function (id) { ids.push(checkMonthlyBasePdf_(payload.month, id, kind).getId()); });
   var size = Number(payload.size);
   if (!(size > 0) || size > 200 * 1024 * 1024) throw new Error('file_too_large');
-  return chunkUploadBegin_({ fileName: payload.month + '月度報告書.pdf', mimeType: 'application/pdf', size: size,
-    folderId: getOrCreateReportFolder_().getId(), purpose: 'monthlyPdf', extra: ids.join(',') });
+  return chunkUploadBegin_({ fileName: monthlyPdfBase_(payload.month, kind) + '.pdf', mimeType: 'application/pdf', size: size,
+    folderId: reportFolderFor_(kind).getId(), purpose: 'monthlyPdf', extra: ids.join(',') });
 }
 
 /** 添付資料を差し込んだ月次PDFを保存し終える(差し込む前のPDFはゴミ箱へ)。payload: { uploadId } 戻り値：{ fileId, url } */
@@ -3630,7 +3756,10 @@ function finishMonthlyPdfUpload(payload, user) {
 function compileMonthlyReportsPdf(payload, user) {
   var month = payload && payload.month;
   if (!month) throw new Error('month_required');
-  var reports = listReports({ month: month }).filter(function (r) { return r.status === '提出済み'; });
+  var kind = reportKind_(payload.kind);
+  assertReportKind_(kind, user);
+  REPORT_IMAGE_KIND_ = kind;
+  var reports = listReports({ month: month, kind: kind }, user).filter(function (r) { return r.status === '提出済み'; });
   if (!reports.length) throw new Error('no_submitted_reports');
   // 担当科の並び(2026-11-20)：ベーシック1年目 → 2年目 → スキルアップ → CA会・CA関係 → 店舗スタッフ育成 → その他(五十音順)
   reports.sort(function (a, b) {
@@ -3685,7 +3814,7 @@ function compileMonthlyReportsPdf(payload, user) {
         '<td style="font-size:8pt; letter-spacing:1.5px; color:' + INK_SECONDARY + '; font-weight:bold;">MONTHLY REPORT</td>' +
         '<td align="right" style="font-size:8.5pt; color:' + INK_SECONDARY + ';">' + monthDotLabel + '</td>' +
       '</tr></table>' +
-      '<div style="font-size:19pt; font-weight:bold; color:' + INK_PRIMARY + '; margin-top:1pt;">' + monthLabel + '度 月次報告書</div>' +
+      '<div style="font-size:19pt; font-weight:bold; color:' + INK_PRIMARY + '; margin-top:1pt;">' + monthLabel + '度 ' + (kind === '三役会' ? '三役会報告書' : '月次報告書') + '</div>' +
       '<div style="border-top:1.5px solid ' + ACCENT + '; margin-top:7pt;"></div>' +
     '</div>'
   );
@@ -3747,14 +3876,43 @@ function compileMonthlyReportsPdf(payload, user) {
     htmlParts.push('</div>');
 
     // 02 その他報告(独立した情報ブロックとして、段落・改行を保ったまま表示)
-    htmlParts.push('<div style="page-break-inside:avoid;">');
+    var items = r.otherItems || [];
+    var itemIdSet = {}; items.forEach(function (it) { itemIdSet[it.id] = true; });
+    htmlParts.push('<div style="page-break-inside:avoid; page-break-after:avoid;">');
     htmlParts.push(sectionHeading_('02', 'その他報告'));
-    htmlParts.push(
-      '<div style="font-size:10.5pt; line-height:1.6; color:' + BODY_TEXT + '; margin:0 0 4pt;">' +
-        (r.otherContent ? replaceInlineImagePlaceholders_(r.otherContent) : '<span style="color:' + INK_SECONDARY + ';">(記載なし)</span>') +
-      '</div>'
-    );
     htmlParts.push('</div>');
+    if (r.otherContent || !items.length) {
+      htmlParts.push(
+        '<div style="font-size:10.5pt; line-height:1.6; color:' + BODY_TEXT + '; margin:0 0 4pt;">' +
+          (r.otherContent ? replaceInlineImagePlaceholders_(r.otherContent) : '<span style="color:' + INK_SECONDARY + ';">(記載なし)</span>') +
+        '</div>'
+      );
+    }
+    // その他報告に足した報告(見出し＋本文)。その報告に付けた添付資料は、すぐ後ろに載せる
+    items.forEach(function (it) {
+      htmlParts.push('<div style="page-break-inside:avoid; margin:10pt 0 4pt;">' +
+        (it.heading ? '<div style="font-size:11pt; font-weight:bold; color:' + INK_PRIMARY + '; border-left:3px solid ' + DEPT_DIVIDER + '; padding-left:6pt; margin-bottom:4pt;">' + escapeHtml_(it.heading) + '</div>' : '') +
+        (it.body ? '<div style="font-size:10.5pt; line-height:1.6; color:' + BODY_TEXT + ';">' + replaceInlineImagePlaceholders_(it.body) + '</div>' : '') +
+        '</div>');
+      var mine = (r.attachments || []).filter(function (a) { return a.itemId === it.id; });
+      var startNew = false;
+      mine.forEach(function (a) {
+        if (isImageFileName_(a.fileName)) {
+          htmlParts.push('<div style="margin:8pt 0; text-align:center;">' + imageTagForFileId_(a.fileId, 'max-width:68%; max-height:300pt; height:auto;') + '</div>');
+          return;
+        }
+        var label = '';
+        if (a.fileId && MONTHLY_APPENDIX_TYPES[monthlyFileExt_(a.fileName)]) {
+          appendix.push({ no: appendix.length + 1, fileId: a.fileId, fileName: a.fileName, department: r.department, afterPart: segments.length - 1 });
+          startNew = true;
+          label = '<span style="color:' + INK_SECONDARY + '; font-size:9pt; white-space:nowrap;">この後に掲載（ATTACHMENT ' + appendix.length + '）</span>　';
+        }
+        htmlParts.push('<div style="padding:4pt 0; font-size:9.5pt;">添付：<span style="color:' + INK_PRIMARY + '; word-break:break-word; overflow-wrap:anywhere;">' + escapeHtml_(a.fileName) + '</span>　' + label +
+          '<a href="' + escapeHtml_(a.url) + '" style="color:' + ACCENT + '; text-decoration:underline; white-space:nowrap;">ファイルを開く</a></div>');
+      });
+      // この報告の添付資料を差し込むため、ここで部分を区切る(続きは新しいページから)
+      if (startNew) { htmlParts = []; segments.push(htmlParts); }
+    });
 
     // 03 課題・改善点(警告色は使わず、薄い背景+左3pxアクセント罫線の通常項目として扱う)。
     // 【2026-09 最終調整】内容が空の場合はボックス自体を出さず、「特記事項なし」という
@@ -3778,8 +3936,10 @@ function compileMonthlyReportsPdf(payload, user) {
     // 画像以外(PDF等)はリンクとして一覧に載せる(添付ファイルの実ページをそのまま
     // 結合するには本来のバイナリ結合が必要でApps Scriptの標準機能だけでは難しいため、
     // 画像は掲載・それ以外はリンク、という扱いにしている。この方針自体は今回変更しない)。
-    var imageAttachments = (r.attachments || []).filter(function (a) { return isImageFileName_(a.fileName); });
-    var otherAttachments = (r.attachments || []).filter(function (a) { return !isImageFileName_(a.fileName); });
+    // 最後の「添付資料」には、その他報告のどの報告にも付いていないものだけ載せる(並びは画面で決めた順)
+    var deptAttachments = (r.attachments || []).filter(function (a) { return !(a.itemId && itemIdSet[a.itemId]); });
+    var imageAttachments = deptAttachments.filter(function (a) { return isImageFileName_(a.fileName); });
+    var otherAttachments = deptAttachments.filter(function (a) { return !isImageFileName_(a.fileName); });
     if (otherAttachments.length) {
       htmlParts.push('<div style="page-break-inside:avoid;">');
       htmlParts.push(sectionHeading_('04', '添付資料'));
@@ -3811,20 +3971,21 @@ function compileMonthlyReportsPdf(payload, user) {
     });
   });
   var bodyStart = '<html><body style="font-family: \'Noto Sans JP\', Arial, sans-serif; color:' + INK_PRIMARY + ';">';
-  var folder = getOrCreateReportFolder_();
-  var oldFiles = monthlyPdfFiles_(folder, month); // 新しいPDFができたらゴミ箱へ移す
+  var folder = reportFolderFor_(kind);
+  var baseName = monthlyPdfBase_(month, kind);
+  var oldFiles = monthlyPdfFiles_(folder, month, kind); // 新しいPDFができたらゴミ箱へ移す
   try {
     // 全体を1つにした PDF(添付資料はリンク)。添付資料を差し込めなかったときは、これをそのまま使う
     var all = [];
     segments.forEach(function (seg) { all = all.concat(seg); });
     var pdfFile = folder.createFile(monthlyHtmlToPdf_(bodyStart + all.join('\n') + '</body></html>', month));
-    pdfFile.setName(month + '月度報告書.pdf');
+    pdfFile.setName(baseName + '.pdf');
     // 添付資料を差し込むときは、部分ごとの PDF も作る
     var parts = [];
     if (appendix.length) {
       segments.forEach(function (seg, k) {
         var pf = folder.createFile(monthlyHtmlToPdf_(bodyStart + seg.join('\n') + '</body></html>', month));
-        pf.setName(month + '月度報告書_部分' + (k + 1) + '.pdf');
+        pf.setName(baseName + '_部分' + (k + 1) + '.pdf');
         parts.push(pf.getId());
       });
     }
@@ -3851,28 +4012,31 @@ function monthlyHtmlToPdf_(html, month) {
 }
 
 /** その月度の月次PDF(と、結合用の部分のファイル)の一覧 */
-function monthlyPdfFiles_(folder, month) {
-  var out = [], it = folder.searchFiles('title contains \'' + month + '月度報告書\' and trashed = false');
+function monthlyPdfFiles_(folder, month, kind) {
+  var base = monthlyPdfBase_(month, kind);
+  var out = [], it = folder.searchFiles('title contains \'' + base + '\' and trashed = false');
   while (it.hasNext()) {
     var f = it.next(), n = f.getName();
-    if (n === month + '月度報告書.pdf' || n.indexOf(month + '月度報告書_部分') === 0) out.push(f);
+    if (n === base + '.pdf' || n.indexOf(base + '_部分') === 0) out.push(f);
   }
   return out;
 }
 
 /** その月度の作成済みの月次PDF。payload: { month } 戻り値：{ url, createdAt, outdated } (無ければ { url: '' }) */
-function getMonthlyPdfInfo(payload) {
+function getMonthlyPdfInfo(payload, user) {
   var month = String(payload && payload.month || '');
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('month_required');
+  var kind = reportKind_(payload.kind);
+  assertReportKind_(kind, user);
   var latest = null;
-  monthlyPdfFiles_(getOrCreateReportFolder_(), month).forEach(function (f) {
-    if (f.getName() !== month + '月度報告書.pdf') return;
+  monthlyPdfFiles_(reportFolderFor_(kind), month, kind).forEach(function (f) {
+    if (f.getName() !== monthlyPdfBase_(month, kind) + '.pdf') return;
     if (!latest || f.getDateCreated().getTime() > latest.getDateCreated().getTime()) latest = f;
   });
   if (!latest) return { url: '' };
   var createdAt = formatDateTime(latest.getDateCreated());
   // 作ったあとに、提出済みの報告書が直されたか(画面に「作り直してください」と出す)
-  var outdated = listReports({ month: month }).some(function (r) {
+  var outdated = listReports({ month: month, kind: kind }, user).some(function (r) {
     return r.status === '提出済み' && String(r.updatedAt || '') > createdAt;
   });
   return { url: 'https://drive.google.com/file/d/' + latest.getId() + '/view', createdAt: createdAt, outdated: outdated };
@@ -3919,11 +4083,11 @@ function findReportDeadline_(month) {
  * payload: { month(YYYY-MM) }
  * 戻り値: { month, meetingDate, deadline, pastDeadline, items:[{department,submitted,reportId}], missingDepartments }
  */
-function getReportSubmissionStatus(payload) {
+function getReportSubmissionStatus(payload, user) {
   var month = payload && payload.month;
   if (!month) throw new Error('month_required');
   var departments = listDepartments();
-  var reports = listReports({ month: month });
+  var reports = listReports({ month: month, kind: payload.kind }, user);
   var submittedByDept = {};
   reports.forEach(function (r) { if (r.status === '提出済み') submittedByDept[r.department] = r; });
   var deadlineInfo = findReportDeadline_(month);

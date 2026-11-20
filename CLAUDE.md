@@ -24,7 +24,7 @@ NPO法人 日本繊維商品めんてなんす研究会（TeMA）の理事向け
 | course-progress.html | 講座準備進捗確認（8段階） | 要 |
 | invoice-ledger.html | 請求書管理簿（※ `請求書管理簿.html` は同内容の旧名。**必ず同じ内容にそろえる**） | 要＋請求書アクセス |
 | invoice-lecturer.html | 講師用請求書（※ `請求書_講師用.html` も同内容。**必ずそろえる**） | 不要 |
-| reports.html | 月次報告書 | 要 |
+| reports.html | 月次報告書（月次／三役会。三役会は名簿 F列「三役会」に印がある人だけ。サーバーで assertReportKind_ により確認） | 要 |
 | materials.html / materials-lecturer.html | 資料庫（理事用／講師用） | 要／不要 |
 | sns.html | SNS文章作成＆履歴。募集告知・開催報告は AI（generateSnsDraft）で投稿文と画像の文言を作り、画像は canvas でデザイン枠に描く | 要 |
 | news.html | TeMA NEWS（講座レポートのたたき台・紙面の編集・PDF発行）。AIは GAS 経由で Anthropic API（鍵はスクリプト プロパティ `ANTHROPIC_API_KEY`） | 要 |
