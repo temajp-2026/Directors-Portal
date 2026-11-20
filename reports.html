@@ -299,6 +299,7 @@
       <div class="section-tools">
         <input type="month" id="monthSelect">
         <button type="button" class="btn btn-outline" id="btnBoardSettings">役員会の設定</button>
+        <button type="button" class="btn btn-outline hidden" id="btnReporterSettings">報告者の設定</button>
         <button type="button" class="btn btn-primary" id="btnCompilePdf">月次PDF作成</button>
       </div>
     </div>
@@ -334,11 +335,13 @@
       <input type="text" id="r-reporterName" placeholder="例：山田 太郎">
     </div>
 
+    <div id="sectionCourses">
     <div class="modal-section-title">直近の講座開催</div>
     <div id="reportCoursesList" class="report-courses-list"></div>
     <button type="button" class="btn btn-outline btn-small" id="btnReportCourseAdd">＋ 講座を追加</button>
+    </div>
 
-    <div class="modal-section-title">その他報告内容</div>
+    <div class="modal-section-title" id="otherTitle">その他報告内容</div>
     <textarea id="r-otherContent" rows="4" placeholder="その他、報告しておきたい内容があればご記入ください"></textarea>
     <div class="inline-image-row">
       <button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="r-otherContent">🖼 画像を挿入</button>
@@ -348,10 +351,12 @@
     <button type="button" class="btn btn-outline btn-small" id="btnAddOtherItem" style="margin-top:8px;">＋ 報告を追加（見出し付き）</button>
     <div class="rc-hint" style="margin-top:4px;">報告ごとに見出しを付けて足せます。報告にファイル（報告書など）を付けると、PDFではその報告のすぐ後ろにページとして入ります。</div>
 
+    <div id="sectionIssues">
     <div class="modal-section-title">課題・改善点等</div>
     <textarea id="r-issuesContent" rows="4" placeholder="課題や改善点等があればご記入ください"></textarea>
     <div class="inline-image-row">
       <button type="button" class="btn btn-outline btn-small btn-insert-image" data-target="r-issuesContent">🖼 画像を挿入</button>
+    </div>
     </div>
     <input type="file" id="inlineImageFileInput" class="hidden" accept="image/*">
 
@@ -366,6 +371,19 @@
       <button type="button" class="btn btn-cancel" id="btnReportCancel">閉じる</button>
       <button type="button" class="btn btn-outline" id="btnReportSaveDraft">下書き保存</button>
       <button type="button" class="btn btn-primary" id="btnReportSubmit">提出する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 三役会の報告者の設定 -->
+<div id="reporterModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="max-width: 520px;">
+    <div class="modal-title">三役会の報告者の設定</div>
+    <div class="modal-sub">三役会の報告書を書く方（報告者）を、1行に1人ずつ、PDFに載せたい順に入力してください（例：〇〇理事長）。ここに登録した方ごとに、報告を書く場所ができます。</div>
+    <textarea id="reporterNames" rows="9" style="width:100%; font-family:inherit; font-size:14px; padding:8px 10px; border:1px solid var(--gw-border); border-radius:8px;"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-cancel" id="btnReporterCancel">閉じる</button>
+      <button type="button" class="btn btn-primary" id="btnReporterSave">保存</button>
     </div>
   </div>
 </div>
@@ -418,6 +436,7 @@
   var currentKind = '月次';  // 月次／三役会(2026-11-20)
   var otherItems = [];       // その他報告に足した報告 [{ id, heading, body }]
   var pendingAttachItemId = ''; // 次に添付するファイルを付ける報告
+  var sanyakuReporters = [];     // 三役会の報告者(報告者の設定の順)
   var currentIdToken = null;
   var departments = [];
   var reports = [];
@@ -511,6 +530,8 @@
     Array.prototype.forEach.call(document.querySelectorAll('.kind-tab'), function (b) { b.classList.toggle('active', b.getAttribute('data-kind') === currentKind); });
     $('kindNote').classList.toggle('hidden', currentKind !== '三役会');
     $('btnCompilePdf').textContent = currentKind === '三役会' ? '三役会PDF作成' : '月次PDF作成';
+    $('btnReporterSettings').classList.toggle('hidden', currentKind !== '三役会');
+    $('btnBoardSettings').classList.toggle('hidden', currentKind === '三役会');
   }
 
   // ログインの有効期限切れ(サーバーが unauthorized を返した)場合は、ログイン画面に戻して案内を表示する。
@@ -552,6 +573,7 @@
   var ERROR_MESSAGES = {
     empty_report: '本文が空です。本文を入力するか、添付ファイルを追加してから提出してください。',
     sanyaku_access_denied: '三役会の報告書は、名簿の「三役会」に印がある方だけが使えます。',
+    sanyaku_reporter_unknown: 'この報告者は「報告者の設定」に登録されていません。画面を再読み込みしてください。',
     no_submitted_reports: 'この月度で「提出済み」の報告書がまだありません。',
     report_not_found: '報告書が見つかりませんでした。画面を再読み込みしてください。',
     department_required: '担当科が指定されていません。',
@@ -732,6 +754,11 @@
 
   function loadMonthData(waitFor) {
     loadMonthlyPdfInfo();
+    if (currentKind === '三役会') {
+      waitFor = Promise.all([waitFor, callApi('getSanyakuReporters', {}).then(function (res) {
+        sanyakuReporters = res && res.ok ? (res.data.reporters || []) : [];
+      }).catch(function () {})]);
+    }
     return Promise.all([
       callApi('listReports', { month: currentMonth, kind: currentKind }),
       callApi('getReportSubmissionStatus', { month: currentMonth, kind: currentKind }),
@@ -749,6 +776,12 @@
   function renderDeadlineInfo(statusData) {
     var infoEl = $('deadlineInfo');
     var bannerEl = $('missingBanner');
+    if (currentKind === '三役会') {
+      infoEl.className = 'legend-title';
+      infoEl.innerHTML = '<b>' + jpMonth(currentMonth) + '</b>　三役会の報告書（報告者ごとに、報告を自由に書けます）';
+      bannerEl.classList.add('hidden');
+      return;
+    }
     var pastDeadline = !!(statusData && statusData.pastDeadline);
 
     if (!statusData || !statusData.deadline) {
@@ -780,8 +813,13 @@
   function renderReportGrid() {
     var grid = $('reportGrid');
     grid.innerHTML = '';
-    $('reportEmpty').classList.toggle('hidden', departments.length > 0);
-    departments.forEach(function (d) {
+    // 三役会の報告書は担当科ごとではなく、報告者(三役)ごと
+    var cards = currentKind === '三役会' ? sanyakuReporters.map(function (n) { return { name: n }; }) : departments;
+    $('reportEmpty').classList.toggle('hidden', cards.length > 0);
+    $('reportEmpty').textContent = currentKind === '三役会'
+      ? '三役会の報告者がまだ登録されていません。「報告者の設定」から登録してください。'
+      : '担当科が登録されていません。「Departments」シートをご確認ください。';
+    cards.forEach(function (d) {
       var r = reportForDepartment(d.name);
       var status = r ? r.status : '未提出';
       var card = document.createElement('div');
@@ -812,11 +850,17 @@
   function openReportModal(deptName) {
     editingDepartment = deptName;
     editingReport = reportForDepartment(deptName);
-    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + deptName + (currentKind === '三役会' ? '（三役会）' : '');
+    var sanyakuMode = currentKind === '三役会';
+    $('reportModalDept').textContent = jpMonth(currentMonth) + '　' + (sanyakuMode ? '三役会の報告書　' + deptName : deptName);
+    // 三役会の報告書は自由記述：講座開催・課題の欄は出さない
+    $('sectionCourses').classList.toggle('hidden', sanyakuMode);
+    $('sectionIssues').classList.toggle('hidden', sanyakuMode);
+    $('otherTitle').textContent = sanyakuMode ? '報告内容（自由に書けます）' : 'その他報告内容';
+    $('r-otherContent').placeholder = sanyakuMode ? '三役からの報告を自由にご記入ください。見出しを付けて分けたいときは、下の「＋ 報告を追加」を使います' : 'その他、報告しておきたい内容があればご記入ください';
     $('reportModalMeta').textContent = editingReport
       ? ('ステータス：' + editingReport.status + '　最終更新：' + (editingReport.updatedBy || '') + '（' + (editingReport.updatedAt || '') + '）')
       : '新規作成（ログインしていれば誰でも編集できます）';
-    $('r-reporterName').value = (editingReport && editingReport.reporterName) ? editingReport.reporterName : (currentUser ? currentUser.name : '');
+    $('r-reporterName').value = (editingReport && editingReport.reporterName) ? editingReport.reporterName : (currentKind === '三役会' ? deptName : (currentUser ? currentUser.name : ''));
     $('r-otherContent').value = editingReport ? (editingReport.otherContent || '') : '';
     $('r-issuesContent').value = editingReport ? (editingReport.issuesContent || '') : '';
     otherItems = editingReport && editingReport.otherItems ? JSON.parse(JSON.stringify(editingReport.otherItems)) : [];
@@ -1295,6 +1339,10 @@
         var ia = savedDeptOrder.indexOf(a.department), ib = savedDeptOrder.indexOf(b.department);
         if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
       }
+      if (currentKind === '三役会') {
+        var ra = sanyakuReporters.indexOf(a.department), rb = sanyakuReporters.indexOf(b.department);
+        return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+      }
       return (defaultDeptRank(a.department) - defaultDeptRank(b.department)) || String(a.department).localeCompare(String(b.department), 'ja');
     });
     orderState = list.map(function (r) { return { report: r, attachments: (r.attachments || []).slice() }; });
@@ -1512,6 +1560,21 @@
     $('btnOrderCompile').addEventListener('click', compileMonthlyPdf);
     $('btnOrderCancel').addEventListener('click', function () { $('orderModal').classList.add('hidden'); });
     $('btnOrderReset').addEventListener('click', function () { buildOrderState(false); renderOrderList(); });
+    $('btnReporterSettings').addEventListener('click', function () {
+      $('reporterNames').value = sanyakuReporters.join('\n');
+      $('reporterModal').classList.remove('hidden');
+    });
+    $('btnReporterCancel').addEventListener('click', function () { $('reporterModal').classList.add('hidden'); });
+    $('btnReporterSave').addEventListener('click', function () {
+      var names = $('reporterNames').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+      callApi('saveSanyakuReporters', { reporters: names }).then(function (res) {
+        if (!res.ok) { showToast(errorMessage(res.error)); return; }
+        sanyakuReporters = res.data.reporters || [];
+        $('reporterModal').classList.add('hidden');
+        showToast('報告者を保存しました');
+        renderReportGrid();
+      }).catch(function () { showToast('保存に失敗しました'); });
+    });
 
     $('btnBoardSettings').addEventListener('click', openBoardModal);
     $('btnBoardClose').addEventListener('click', closeBoardModal);
