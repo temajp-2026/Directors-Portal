@@ -131,6 +131,10 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-20 TeMA NEWS の画像PDF】新しいシートや列の追加はありません。
+ *   - 文字の入っていない(スライドを画像にした) PDF は、画面でページごとの画像にし、1ページずつ Google の OCR で読む
+ *     (ocrNewsPageImage)。PDF をまるごと OCR すると「User rate limit exceeded」で失敗することがあるため。
+ *     画像は AI には送らない。読み取った文字は、今まで通り名簿の確認と伏せ字をしてから使う。
  * ・【2026-11-14 お知らせ・開催準備】新しいシートや列の追加はありません(initializeSpreadsheetの再実行は不要)。
  *   - トップ画面のお知らせ(tema.jp)：画面から tema.jp の公開の一覧(WordPress の REST API)を直接読むようにした。
  *     サーバー側も、まず同じ一覧を読み、だめならトップページから読み取る(今まで通り)。
@@ -659,7 +663,7 @@ function handleRequest(e) {
     // 同時保存の取りこぼし防止：データを書き換える操作は1件ずつ順番に処理する(読み取り系は並列のまま)。
     // 例：2人の理事が同じ講座のチェック項目を同時に付けた場合に、片方の変更が消えるのを防ぐ。
     // 時間のかかる処理(PDF一本化・ファイルのアップロード)は、他の人の保存を待たせないよう対象外にする。
-    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'uploadReportAttachment',
+    var LOCK_EXEMPT = ['compileMonthlyReportsPdf', 'ocrCoursePdf', 'uploadCoursePdf', 'uploadLecturerMaterial', 'uploadLecturerMaterialFolderFile', 'prepareNewsInput', 'generateNewsDraft', 'ocrNewsPageImage', 'uploadReportAttachment',
       'uploadReportInlineImage', 'uploadMaterialDirector', 'uploadMaterialLecturer'];
     if (!/^(list|get)/.test(action) && LOCK_EXEMPT.indexOf(action) === -1) {
       lock = LockService.getScriptLock();
@@ -817,6 +821,9 @@ function handleRequest(e) {
         break;
       case 'getNewsSources':
         result = getNewsSources(body.payload);
+        break;
+      case 'ocrNewsPageImage':
+        result = ocrNewsPageImage(body.payload);
         break;
       case 'getNewsSourceFile':
         result = getNewsSourceFile(body.payload);
@@ -4149,6 +4156,31 @@ function getNewsSourceFile(payload) {
   var bytes = file.getBlob().getBytes();
   if (bytes.length > 30 * 1024 * 1024) throw new Error('pdf_too_large');
   return { base64: Utilities.base64Encode(bytes), fileName: file.getName() };
+}
+
+/**
+ * PDF の1ページ分の画像(画面で作った JPEG)を Google の OCR で読み、文字を返す。payload: { base64 }
+ * 画像だけの PDF をまるごと OCR すると上限エラーになりやすいため、1ページずつ読む。画像はすぐ消し、どこにも残さない。
+ */
+function ocrNewsPageImage(payload) {
+  var b64 = payload && typeof payload.base64 === 'string' ? payload.base64 : '';
+  if (!b64 || b64.length > 6 * 1024 * 1024) throw new Error('image_invalid');
+  var bytes = Utilities.base64Decode(b64);
+  if (!(bytes.length > 3 && (bytes[0] & 0xff) === 0xff && (bytes[1] & 0xff) === 0xd8)) throw new Error('image_invalid'); // JPEG だけ
+  var blob = Utilities.newBlob(bytes, 'image/jpeg', 'page.jpg');
+  var waits = [3000, 10000, 20000];
+  for (var attempt = 0; ; attempt++) {
+    var tempId = null;
+    try {
+      tempId = Drive.Files.insert({ title: 'NEWS_OCR_' + Utilities.getUuid() }, blob, { convert: true, ocr: true, ocrLanguage: 'ja' }).id;
+      return { text: DocumentApp.openById(tempId).getBody().getText() };
+    } catch (e) {
+      if (attempt >= waits.length || !/rate limit|Rate Limit|429/.test(String(e && e.message || e))) throw new Error('ocr_failed:' + String(e && e.message || e));
+      Utilities.sleep(waits[attempt]);
+    } finally {
+      if (tempId) { try { Drive.Files.remove(tempId); } catch (e2) {} }
+    }
+  }
 }
 
 /**

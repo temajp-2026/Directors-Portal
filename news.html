@@ -677,13 +677,16 @@
     });
   }
   /** 材料の PDF を取り寄せて、ページごとの文字を取り出す(文字の入っていない画像だけの PDF では空になる) */
-  function extractPdfText(courseId, key) {
+  var PDF_OCR_MAX_PAGES = 30;
+  function extractPdfText(courseId, key, onProgress) {
+    var pdfDoc = null;
     return callApi('getNewsSourceFile', { courseId: courseId, key: key }).then(function (res) {
       if (!res.ok) throw new Error(res.error || 'pdf_load_failed');
       var bin = atob(res.data.base64 || ''), bytes = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return loadPdfJs().then(function (pdfjs) { return pdfjs.getDocument({ data: bytes }).promise; });
     }).then(function (pdf) {
+      pdfDoc = pdf;
       var n = Math.min(pdf.numPages, PDF_TEXT_MAX_PAGES), pages = [], chain = Promise.resolve();
       for (var p = 1; p <= n; p++) {
         (function (pn) {
@@ -696,7 +699,41 @@
         })(p);
       }
       return chain.then(function () { return pages.join('\n\n'); });
+    }).then(function (text) {
+      if (text.replace(/（\d+ページ）|\s/g, '').length >= 30 || !pdfDoc) return text;
+      return ocrPdfPages(pdfDoc, onProgress);
     });
+  }
+  /**
+   * 文字の入っていない(画像だけの) PDF：ページを1枚ずつ画像にして、Google の OCR で読む。
+   * 画像は OCR のためだけに使い、AI には送らない(読み取った文字は、サーバーで名簿の確認と伏せ字をしてから使う)。
+   */
+  function ocrPdfPages(pdf, onProgress) {
+    var n = Math.min(pdf.numPages, PDF_OCR_MAX_PAGES), pages = [], chain = Promise.resolve();
+    for (var p = 1; p <= n; p++) {
+      (function (pn) {
+        chain = chain.then(function () {
+          if (onProgress) onProgress(pn, n);
+          return pdf.getPage(pn);
+        }).then(function (page) {
+          var base = page.getViewport({ scale: 1 });
+          var scale = Math.min(3, 1600 / Math.max(base.width, base.height));
+          var vp = page.getViewport({ scale: scale });
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () {
+            var b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
+            canvas.width = canvas.height = 0;
+            return callApi('ocrNewsPageImage', { base64: b64 });
+          });
+        }).then(function (res) {
+          if (res && res.ok && res.data && res.data.text) pages.push('（' + pn + 'ページ）\n' + String(res.data.text).trim());
+        }).catch(function () { /* このページは読めなかった。次のページへ */ });
+      })(p);
+    }
+    return chain.then(function () { return pages.join('\n\n'); });
   }
 
   function prepareInput() {
@@ -715,7 +752,9 @@
     pdfKeys.forEach(function (k, i) {
       chain = chain.then(function () {
         btn.textContent = 'PDFの文字を読み取っています…（' + (i + 1) + ' / ' + pdfKeys.length + '）';
-        return extractPdfText(courseId, k).then(function (t) {
+        return extractPdfText(courseId, k, function (pn, n) {
+          btn.textContent = '画像のPDFを読み取っています…（' + pn + ' / ' + n + 'ページ）';
+        }).then(function (t) {
           if (t.replace(/（\d+ページ）|\s/g, '').length >= 30) clientTexts[k] = t;
         }).catch(function () { /* サーバー側で読み取る */ });
       });
