@@ -1080,6 +1080,7 @@
               var a = item.querySelector('a');
               a.href = dataUrl;
               a.download = fileName;
+              a.addEventListener('click', function (e) { if (shareImages([a])) e.preventDefault(); });
               grid.appendChild(item);
             });
           });
@@ -1392,16 +1393,47 @@
         item.innerHTML = '<img alt="' + (i + 1) + '枚目"><a>' + (i + 1) + '枚目を保存</a>';
         item.querySelector('img').src = u;
         var a = item.querySelector('a'); a.href = u; a.download = base + '_' + selectedType() + '_' + (i + 1) + '.jpg';
+        a.addEventListener('click', function (e) { if (shareImages([a])) e.preventDefault(); });
         grid.appendChild(item);
       });
-      $('designStatus').textContent = total + '枚組の画像です（Instagramでは、この順に選ぶと1つの投稿にまとめられます）。文字は下の「画像の文字を直す」で変えられます。';
+      $('designStatus').textContent = total + '枚組の画像です（Instagramでは、この順に選ぶと1つの投稿にまとめられます）。文字は下の「画像の文字を直す」で変えられます。' +
+        (canShareImages() ? '　スマホでは「保存」を押すと共有の画面が開くので、「画像を保存」を選ぶと写真に入ります。' : '');
       $('btnSaveDesign').classList.remove('hidden');
       if (needPdf && !pdf) $('designStatus').textContent += '　※講座案内PDFを読み込めなかったため、PDFを使う部分は省きました。';
     });
   }
   function saveDesignImages() {
     var links = Array.prototype.slice.call($('designGrid').querySelectorAll('a[download]'));
+    if (shareImages(links)) return;
     links.forEach(function (a, i) { setTimeout(function () { a.click(); }, i * 400); });
+  }
+
+  /* スマホ(特に iPhone)では、ダウンロードの方式だと写真アプリに保存できない。
+   * 共有の画面(「画像を保存」で写真に入る)を開く。パソコンは今までどおりダウンロードする。 */
+  function isTouchDevice() { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+  function dataUrlToFile(url, name) {
+    var parts = String(url).split(','), mime = (parts[0].match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+    var bin = atob(parts[1] || ''), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new File([arr], name, { type: mime });
+  }
+  function canShareImages() {
+    try {
+      return isTouchDevice() && !!navigator.share && !!navigator.canShare &&
+        navigator.canShare({ files: [new File([new Uint8Array(1)], 'a.jpg', { type: 'image/jpeg' })] });
+    } catch (e) { return false; }
+  }
+  /** 共有の画面で画像を渡す。使えない端末では false を返す(呼び出し側がダウンロードする) */
+  function shareImages(links) {
+    if (!links.length || !canShareImages()) return false;
+    var files;
+    try { files = links.map(function (a) { return dataUrlToFile(a.href, a.download || 'image.jpg'); }); } catch (e) { return false; }
+    if (!navigator.canShare({ files: files })) return false;
+    navigator.share({ files: files }).catch(function (err) {
+      if (err && err.name === 'AbortError') return; // 共有の画面を閉じただけ
+      showToast('保存できませんでした。画像を長押しして「写真に保存」をお試しください');
+    });
+    return true;
   }
   function resetDesign(design) {
     editingDesign = design || null;
@@ -1413,6 +1445,7 @@
 
   function saveAllImages() {
     var links = Array.prototype.slice.call($('imgGrid').querySelectorAll('a[download]'));
+    if (shareImages(links)) return;
     links.forEach(function (a, i) { setTimeout(function () { a.click(); }, i * 400); });
   }
 
