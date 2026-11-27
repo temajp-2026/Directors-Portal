@@ -287,12 +287,13 @@
       <div class="section-title">2. 謝礼</div>
       <table class="doc-table">
         <tbody>
-          <tr><th>謝礼本体金額（税抜）</th><td class="amount-cell" id="doc-fee">¥0</td></tr>
-          <tr><th>消費税（10%）</th><td class="amount-cell" id="doc-tax">¥0</td></tr>
-          <tr><th>小計（税込）</th><td class="amount-cell" id="doc-subtotal">¥0</td></tr>
+          <tr><th id="doc-feeLabel">謝礼本体金額（税抜）</th><td class="amount-cell" id="doc-fee">¥0</td></tr>
+          <tr id="doc-taxRow"><th>消費税（10%）</th><td class="amount-cell" id="doc-tax">¥0</td></tr>
+          <tr id="doc-subtotalRow"><th>小計（税込）</th><td class="amount-cell" id="doc-subtotal">¥0</td></tr>
           <tr><th>源泉徴収税額</th><td class="amount-cell" id="doc-withholding">¥0</td></tr>
           <tr id="doc-extrasRow" class="hidden"><th>交通費・宿泊費（実費）</th><td class="amount-cell" id="doc-extras">¥0</td></tr>
           <tr class="total-row"><th>差引お支払い合計（振込予定額）</th><td class="amount-cell" id="doc-total">¥0</td></tr>
+          <tr id="doc-taxNoteRow" class="hidden"><td colspan="2" id="doc-taxNote" style="font-size:calc(var(--fs-scale,1)*11.5px); color:var(--gw-text-secondary); line-height:1.6;"></td></tr>
           <tr><th>交通費・宿泊費の扱い</th><td id="doc-travel">別途支給</td></tr>
           <tr><th>支払方法</th><td id="doc-paymentMethod">未定</td></tr>
           <tr><th>支払予定日</th><td id="doc-paymentDueDate">未定</td></tr>
@@ -510,13 +511,27 @@
   var VENUE_HALL_2F = '白王ビル２Fホール';
   var VENUE_HALL_2F_ADDRESS = '東京都文京区後楽2-3-10';
 
-  function calcAmounts(fee, withholdingType, travelFee, lodgingFee) {
-    fee = Math.max(0, Math.round(Number(fee) || 0));
-    var tax = Math.floor(fee * 0.10);
-    var subtotal = fee + tax;
-    var withholding = withholdingType === '法人' ? 0 : Math.floor(fee * 0.1021);
-    var extras = Math.max(0, Math.round(Number(travelFee) || 0)) + Math.max(0, Math.round(Number(lodgingFee) || 0));
-    return { fee: fee, tax: tax, subtotal: subtotal, withholding: withholding, extras: extras, total: subtotal - withholding + extras };
+  /**
+   * 謝礼の金額の計算(トップ・請求書管理簿・講師用請求書で同じもの)。
+   * o: { fee(入力した金額), feeBasis('税抜'|'税込'), taxRule, withholdingType('個人'|'法人'), invoiceRegistered('yes'|'no'), travelFee, lodgingFee }
+   * ・taxRule が '2026-11' の請求書：法人とインボイス登録ありの個人は消費税10%を加える。登録なしの個人は消費税を加えない。
+   * ・それより前に作った請求書(taxRule が空)：今までどおり、だれにでも消費税10%を加える(過去の金額を変えない)。
+   * ・税込で入れた金額は、消費税を加える場合だけ「本体＋消費税」に分ける(消費税＝税込÷11の切り捨て)。加えない場合は、その金額が謝礼。
+   * ・源泉徴収は個人だけ。消費税を除いた謝礼に10.21%(切り捨て)。
+   */
+  var TAX_RULE_CURRENT = '2026-11';
+  function calcFee(o) {
+    var amount = Math.max(0, Math.round(Number(o.fee) || 0));
+    var corp = o.withholdingType === '法人';
+    var taxable = o.taxRule !== TAX_RULE_CURRENT || corp || o.invoiceRegistered === 'yes';
+    var fee, tax;
+    if (!taxable) { fee = amount; tax = 0; }
+    else if (o.feeBasis === '税込') { tax = Math.floor(amount / 11); fee = amount - tax; }
+    else { fee = amount; tax = Math.floor(amount * 0.10); }
+    var withholding = corp ? 0 : Math.floor(fee * 0.1021);
+    var extras = Math.max(0, Math.round(Number(o.travelFee) || 0)) + Math.max(0, Math.round(Number(o.lodgingFee) || 0));
+    return { fee: fee, tax: tax, subtotal: fee + tax, withholding: withholding, extras: extras,
+      total: fee + tax - withholding + extras, taxable: taxable };
   }
 
   function showToast(msg) {
@@ -540,7 +555,18 @@
     var isTravelSeparate = (currentInvoice.travelHandling || '別途支給') === '別途支給';
     var travelFee = isTravelSeparate ? $('lec-travelFee').value : 0;
     var lodgingFee = isTravelSeparate ? $('lec-lodgingFee').value : 0;
-    var c = calcAmounts(currentInvoice.feeExTax, withholdingType, travelFee, lodgingFee);
+    var invoiceRegistered = document.querySelector('input[name="invoiceRegistered"]:checked')
+      ? radioValue('invoiceRegistered') : (currentInvoice.invoiceRegistered || 'no');
+    var c = calcFee({ fee: currentInvoice.feeExTax, feeBasis: currentInvoice.feeBasis, taxRule: currentInvoice.taxRule,
+      withholdingType: withholdingType, invoiceRegistered: invoiceRegistered, travelFee: travelFee, lodgingFee: lodgingFee });
+    $('doc-feeLabel').textContent = c.taxable ? '謝礼本体金額（税抜）' : '謝礼金額';
+    $('doc-taxRow').classList.toggle('hidden', !c.taxable);
+    $('doc-subtotalRow').classList.toggle('hidden', !c.taxable);
+    var showNote = currentInvoice.taxRule === TAX_RULE_CURRENT && withholdingType === '個人' && c.fee > 0;
+    $('doc-taxNoteRow').classList.toggle('hidden', !showNote);
+    $('doc-taxNote').textContent = c.taxable
+      ? 'インボイス登録のある個人の方には、消費税（10%）を加えてお支払いします。源泉徴収は、消費税を除いた謝礼にかかります。'
+      : 'インボイス登録のない個人の方には、消費税を加えずにお支払いします（謝礼金額から源泉徴収税額を差し引きます）。登録のある方は、下の「インボイス登録の有無」で「登録あり」を選んでください。';
     $('doc-fee').textContent = yen(c.fee);
     $('doc-tax').textContent = yen(c.tax);
     $('doc-subtotal').textContent = yen(c.subtotal);
@@ -867,10 +893,10 @@
     invoiceId = getIdFromUrl();
 
     document.querySelectorAll('input[name="invoiceRegistered"]').forEach(function (r) {
-      r.addEventListener('change', function () { toggleInvoiceNumberField(); validateInvoiceNumber(); });
+      r.addEventListener('change', function () { toggleInvoiceNumberField(); validateInvoiceNumber(); updateTotals(); });
     });
     document.querySelectorAll('input[name="withholdingType"]').forEach(function (r) {
-      r.addEventListener('change', toggleWithholdingFields);
+      r.addEventListener('change', function () { toggleWithholdingFields(); updateTotals(); });
     });
     document.querySelectorAll('input[name="archiveConsent"]').forEach(function (r) {
       r.addEventListener('change', toggleArchiveConditionField);

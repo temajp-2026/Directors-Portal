@@ -131,6 +131,12 @@
  *     登録していない間は「AIを使わずに白紙から作る」だけが使える。鍵はコードや画面には書かない。
  *   - 名簿などの個人情報を AI に送らないよう、表計算の形式・名簿らしいファイル名・連絡先や「〇〇様」の多い資料は使わず、
  *     少しだけ含まれる連絡先は伏せ字にする。送る内容は画面で確認してから送る。
+ * ・【2026-11-27 謝礼の消費税と、税込・税抜の入力】請求書(講師)に列 feeBasis(税抜／税込)と taxRule を追加。
+ *     ★ initializeSpreadsheet の再実行が必要(列の追加)。
+ *     新しく作る請求書(taxRule='2026-11')から、インボイス登録のない個人の講師には消費税を加えない。
+ *     法人とインボイス登録ありの個人は今までどおり消費税10%。過去の請求書(taxRule が空)は今までの計算のまま。
+ *     理事は謝礼を「税抜」か「税込」で入れられる(feeExTax の列に、入れた金額をそのまま保存する)。
+ *     金額の計算は画面(index / invoice-ledger / invoice-lecturer の calcFee)で行う。
  * ・【2026-11-20 月次報告書に「追加の報告」】担当科の一覧(Departments)にない名前の月次報告書は「追加の報告」として扱い、
  *     三役会と同じ自由記述(講座開催・課題の欄なし)にする。画面の「＋ 報告を追加」で題名を付けて作る。
  *     追加の報告は削除できる(deleteReport：状態を「削除済み」にする。担当科の報告書は削除できない)。
@@ -281,8 +287,13 @@ var INVOICE_HEADERS = [
   'paidAt', 'paidBy', 'voidReason', 'voidedBy', 'voidedAt',
   'travelFee', 'lodgingFee', 'directorMessage',
   // 講座の時間(請書兼請求書に「講座の時間」として表示する)。startTime/endTimeは「講師依頼時間」として扱う。
-  'courseStartTime', 'courseEndTime'
+  'courseStartTime', 'courseEndTime',
+  // 謝礼の入れ方(税抜／税込)と、消費税の計算の決まり('2026-11'＝登録なしの個人は消費税なし。空＝前の決まり)。
+  // feeExTax の列には、理事が入れた金額をそのまま入れる(税込で入れた場合は税込の金額)。
+  'feeBasis', 'taxRule'
 ];
+var TAX_RULE_CURRENT = '2026-11';
+function feeBasis_(v) { return v === '税込' ? '税込' : '税抜'; }
 
 // 各講座の資料庫(理事がアップロードする資料＋講師が専用リンクから提出する資料をまとめて管理)。
 // 1資料＝1行。削除は請求書の「取消」と同じ考え方で論理削除とし(status='削除済み')、行自体は記録として残す。
@@ -2436,7 +2447,8 @@ function createInvoice(payload, user) {
     createdBy: user.email, createdAt: now, updatedBy: user.email, updatedAt: now,
     paidAt: '', paidBy: '', voidReason: '', voidedBy: '', voidedAt: '',
     travelFee: 0, lodgingFee: 0, directorMessage: payload.directorMessage || '',
-    courseStartTime: payload.courseStartTime || '', courseEndTime: payload.courseEndTime || ''
+    courseStartTime: payload.courseStartTime || '', courseEndTime: payload.courseEndTime || '',
+    feeBasis: feeBasis_(payload.feeBasis), taxRule: TAX_RULE_CURRENT
   };
   sheet.appendRow(safeRow_(INVOICE_HEADERS.map(function (h) { return obj[h]; })));
   appendLog(user.email, 'createInvoice', payload.topic || payload.directorName || '');
@@ -2447,7 +2459,8 @@ function updateInvoiceDirector(payload, user) {
   var sheet = getInvoiceSheet();
   var rowIndex = findInvoiceRowIndex(sheet, payload.id);
   if (rowIndex === -1) throw new Error('invoice_not_found');
-  if (sheet.getRange(rowIndex, invoiceCol('status')).getValue() === '取消') throw new Error('invoice_voided'); // 取消済みは編集不可(画面と同じ規則をサーバーでも確認)
+  var statusNow = sheet.getRange(rowIndex, invoiceCol('status')).getValue();
+  if (statusNow === '取消') throw new Error('invoice_voided'); // 取消済みは編集不可(画面と同じ規則をサーバーでも確認)
   sheet.getRange(rowIndex, invoiceCol('courseId'), 1, 14).setValues(safeRows_([[
     payload.courseId || '', payload.department || '',
     payload.eventDate || '', payload.startTime || '', payload.endTime || '',
@@ -2457,6 +2470,9 @@ function updateInvoiceDirector(payload, user) {
     payload.paymentDueDate || '', JSON.stringify(payload.equipment || {})
   ]]));
   sheet.getRange(rowIndex, invoiceCol('directorMessage')).setValue(safeCell_(payload.directorMessage || ''));
+  sheet.getRange(rowIndex, invoiceCol('feeBasis')).setValue(safeCell_(feeBasis_(payload.feeBasis)));
+  // 講師がまだ入力していない請求書は、直したときに新しい決まり(登録なしの個人は消費税なし)にする
+  if (statusNow === '作成済み') sheet.getRange(rowIndex, invoiceCol('taxRule')).setValue(safeCell_(TAX_RULE_CURRENT));
   var courseTimeRange = sheet.getRange(rowIndex, invoiceCol('courseStartTime'), 1, 2);
   courseTimeRange.setNumberFormat('@');
   courseTimeRange.setValues(safeRows_([[payload.courseStartTime || '', payload.courseEndTime || '']]));
