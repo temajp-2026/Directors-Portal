@@ -135,6 +135,7 @@
  *     ★ initializeSpreadsheet の再実行が必要(列の追加)。
  *     新しく作る請求書(taxRule='2026-11')から、インボイス登録のない個人の講師には消費税を加えない。
  *     法人とインボイス登録ありの個人は今までどおり消費税10%。過去の請求書(taxRule が空)は今までの計算のまま。
+ *     (同日の修正：シートが taxRule の '2026-11' を日付に変えてしまい、新しい計算にならなかったため、読み出し時に文字へ戻す)
  *     理事は謝礼を「税抜」か「税込」で入れられる(feeExTax の列に、入れた金額をそのまま保存する)。
  *     金額の計算は画面(index / invoice-ledger / invoice-lecturer の calcFee)で行う。
  * ・【2026-11-20 月次報告書に「追加の報告」】担当科の一覧(Departments)にない名前の月次報告書は「追加の報告」として扱い、
@@ -2394,6 +2395,10 @@ function invoiceRowToObject(values) {
   obj.updatedAt = formatDate(obj.updatedAt);
   obj.paidAt = formatDate(obj.paidAt);
   obj.voidedAt = formatDate(obj.voidedAt);
+  // スプレッドシートが '2026-11' を日付(2026/11/01)に変えて保存するため、文字に戻す。
+  // 計算のきまりは今のところ1つだけなので、空でなければ新しいきまりとみなす。
+  obj.taxRule = (obj.taxRule === '' || obj.taxRule === null || obj.taxRule === undefined) ? '' : TAX_RULE_CURRENT;
+  obj.feeBasis = obj.feeBasis ? feeBasis_(obj.feeBasis) : '税抜';
   return obj;
 }
 
