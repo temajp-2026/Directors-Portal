@@ -669,7 +669,7 @@
       var r = calcFee({ fee: base.fee, feeBasis: base.feeBasis, taxRule: base.taxRule, withholdingType: k.o.withholdingType, invoiceRegistered: k.o.invoiceRegistered });
       var parts = ['謝礼 ' + yen(r.fee)];
       parts.push(r.tax ? '＋消費税 ' + yen(r.tax) : '消費税なし');
-      if (r.withholding) parts.push('−源泉徴収 ' + yen(r.withholding));
+      if (r.withholding) parts.push('−源泉徴収（10.21%） ' + yen(r.withholding));
       var div = document.createElement('div');
       div.className = 'calc-case';
       div.innerHTML = '<div class="calc-row"><span></span><span></span></div><div class="calc-detail"></div>';
